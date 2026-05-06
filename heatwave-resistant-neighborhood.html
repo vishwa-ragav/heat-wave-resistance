@@ -1,0 +1,2155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bairro Fresco — A Heatwave-Resistant Neighborhood in São Tomé</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4efe6; color: #2c2c2a; }
+  .app { display: grid; grid-template-columns: 1fr 320px; height: 100vh; }
+  .stage { position: relative; background: #87ceeb; }
+  #canvas { display: block; width: 100%; height: 100%; }
+  .panel { background: #fbf8f1; border-left: 1px solid #d8d2c2; padding: 20px; overflow-y: auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; font-weight: 600; }
+  .sub { font-size: 13px; color: #666; margin: 0 0 18px; }
+  h2 { font-size: 13px; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; font-weight: 600; }
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  button { padding: 8px 10px; border: 1px solid #d8d2c2; background: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; color: #2c2c2a; transition: all 0.15s; }
+  button:hover { background: #f4efe6; }
+  button.active { background: #1d9e75; color: white; border-color: #1d9e75; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: #fff; border: 1px solid #ece6d6; border-radius: 6px; padding: 10px; }
+  .stat-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.4px; }
+  .stat-value { font-size: 22px; font-weight: 600; color: #1d9e75; }
+  .legend { display: grid; gap: 6px; }
+  .legend-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #444; }
+  .swatch { width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.08); }
+  .info-card { position: absolute; top: 16px; left: 16px; max-width: 280px; background: rgba(255,255,255,0.95); border-radius: 8px; padding: 12px 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); opacity: 0; transform: translateY(-6px); transition: all 0.2s; pointer-events: none; }
+  .info-card.show { opacity: 1; transform: translateY(0); }
+  .info-card .title { font-weight: 600; font-size: 14px; color: #1d9e75; margin-bottom: 4px; }
+  .info-card .icon { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .info-card .desc { font-size: 13px; color: #444; line-height: 1.5; }
+  .hint { position: absolute; bottom: 16px; left: 16px; background: rgba(0,0,0,0.55); color: white; font-size: 11px; padding: 6px 10px; border-radius: 4px; pointer-events: none; }
+  .feature-list { font-size: 13px; line-height: 1.6; color: #444; }
+  .feature-list .check { color: #1d9e75; font-weight: 600; }
+  .badge { display: inline-block; padding: 2px 8px; background: #e1f5ee; color: #0f6e56; font-size: 11px; border-radius: 10px; font-weight: 600; }
+  @media (max-width: 800px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 60vh 1fr; }
+    .panel { border-left: none; border-top: 1px solid #d8d2c2; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage">
+    <canvas id="canvas"></canvas>
+    <div class="info-card" id="info">
+      <div class="icon" id="info-icon"></div>
+      <div class="title" id="info-title"></div>
+      <div class="desc" id="info-desc"></div>
+    </div>
+    <div class="hint" id="hint-orbit">drag to rotate &middot; scroll to zoom &middot; click anything for details</div>
+    <div id="hint-walk" style="display:none;position:absolute;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.65);color:white;padding:8px 14px;border-radius:6px;font-size:13px;font-family:-apple-system,sans-serif;text-align:center;">
+      <strong>Walking</strong> — W A S D / arrows to move, mouse to look, Shift to run, Esc to exit
+    </div>
+    <div id="crosshair" style="display:none;position:absolute;top:50%;left:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border:2px solid rgba(255,255,255,0.7);border-radius:50%;pointer-events:none;mix-blend-mode:difference;"></div>
+    <div id="status" style="position:absolute;top:16px;right:16px;background:rgba(0,0,0,0.7);color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-family:monospace;display:none;"></div>
+    <div id="errbox" style="position:absolute;bottom:50px;left:16px;right:16px;background:#7a1f1f;color:#fff;padding:12px;border-radius:6px;font-size:13px;font-family:monospace;white-space:pre-wrap;display:none;max-height:50vh;overflow:auto;"></div>
+  </div>
+  <div class="panel">
+    <h1>Bairro Fresco</h1>
+    <p class="sub">A heatwave-resistant neighborhood for São Tomé and Príncipe, designed by Swathi. Tropical equatorial climate &mdash; hot &amp; humid year-round.</p>
+
+    <h2>View modes</h2>
+    <div class="controls">
+      <button id="btn-walk" style="grid-column: span 2; background:#1d9e75; color:white; border-color:#1d9e75; font-weight:600;">Walk around (first-person)</button>
+      <button id="btn-cool" class="active">Cool design</button>
+      <button id="btn-heat">Heat overlay</button>
+      <button id="btn-rotate">Auto-spin</button>
+      <button id="btn-reset">Reset view</button>
+    </div>
+    <p style="font-size:12px;color:#888;margin:6px 0 0;">Walk: <strong>W A S D</strong> or arrow keys &middot; <strong>Shift</strong> to run &middot; <strong>Mouse</strong> to look &middot; <strong>Esc</strong> to exit</p>
+
+    <h2>Neighborhood stats</h2>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Tree canopy</div><div class="stat-value">38%</div></div>
+      <div class="stat"><div class="stat-label">Hydration</div><div class="stat-value">8</div></div>
+      <div class="stat"><div class="stat-label">Cool zones</div><div class="stat-value">3</div></div>
+      <div class="stat"><div class="stat-label">Avg albedo</div><div class="stat-value">0.62</div></div>
+    </div>
+
+    <h2>Must-have features</h2>
+    <div class="feature-list">
+      <div><span class="check">&#10003;</span> Canopy cover &mdash; <span class="badge">38% shaded</span></div>
+      <div><span class="check">&#10003;</span> Hydration stations for people &amp; pets</div>
+      <div><span class="check">&#10003;</span> White roofs &amp; light pavement (high albedo)</div>
+      <div><span class="check">&#10003;</span> Bike lanes, shaded bus stops, no car lanes</div>
+    </div>
+
+    <h2>Legend</h2>
+    <div class="legend">
+      <div class="legend-row"><div class="swatch" style="background:#3b8c3b"></div>Palms, bananas, mango &mdash; tropical canopy</div>
+      <div class="legend-row"><div class="swatch" style="background:#d85a30"></div>Flamboyant tree &mdash; native shade flowers</div>
+      <div class="legend-row"><div class="swatch" style="background:#4aa3df"></div>Pond &amp; ocean &mdash; evaporative cooling</div>
+      <div class="legend-row"><div class="swatch" style="background:#f5f5f5"></div>White-painted roofs &mdash; reflect equatorial sun</div>
+      <div class="legend-row"><div class="swatch" style="background:#e8e4d4"></div>Light pavement &mdash; high albedo</div>
+      <div class="legend-row"><div class="swatch" style="background:#5dcaa5"></div>Bike lanes &mdash; green transit</div>
+      <div class="legend-row"><div class="swatch" style="background:#fac775"></div>Pastel walls &mdash; Portuguese colonial style</div>
+      <div class="legend-row"><div class="swatch" style="background:#85b7eb"></div>Hydration stations</div>
+    </div>
+
+    <h2>Heat overlay</h2>
+    <p style="font-size:13px; color:#666; line-height:1.5; margin:0;">
+      Click "Heat overlay" to see surface temperatures. On the equator, the sun is nearly overhead all year, so cool roofs and dense canopy matter even more. Trees, water, and white surfaces stay cool. Dark surfaces turn red &mdash; the urban heat island effect.
+    </p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+function showError(msg) {
+  const box = document.getElementById('errbox');
+  if (box) { box.style.display = 'block'; box.textContent = msg; }
+  console.error(msg);
+}
+function setStatus(msg) {
+  const s = document.getElementById('status');
+  if (s) { s.style.display = 'block'; s.textContent = msg; }
+}
+window.addEventListener('error', (e) => showError('JS error: ' + (e.message || e.error) + '\n' + (e.error && e.error.stack ? e.error.stack : '')));
+try {
+  if (typeof THREE === 'undefined') throw new Error('Three.js failed to load from CDN. Check your internet connection.');
+  setStatus('Three.js loaded · initializing scene…');
+} catch(e) { showError(e.message); }
+
+(function() {
+  try {
+  const canvas = document.getElementById('canvas');
+  const stage = canvas.parentElement;
+  if (!canvas || !stage) throw new Error('Canvas element missing');
+
+  const scene = new THREE.Scene();
+  const skyCool = new THREE.Color(0x9ed6f0);
+  const skyHot = new THREE.Color(0xffb066);
+  scene.background = skyCool;
+  scene.fog = new THREE.Fog(0xb8d4e0, 130, 280);
+
+  const camera = new THREE.PerspectiveCamera(45, stage.clientWidth / stage.clientHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(stage.clientWidth, stage.clientHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.physicallyCorrectLights = false;
+
+  const camState = { dist: 75, angleH: Math.PI / 4, angleV: Math.PI / 3.5, target: new THREE.Vector3(0, 0, 0) };
+  function applyCamera() {
+    const r = camState.dist;
+    camera.position.x = camState.target.x + r * Math.sin(camState.angleV) * Math.cos(camState.angleH);
+    camera.position.z = camState.target.z + r * Math.sin(camState.angleV) * Math.sin(camState.angleH);
+    camera.position.y = camState.target.y + r * Math.cos(camState.angleV);
+    camera.lookAt(camState.target);
+  }
+  applyCamera();
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xfff1cc, 1.05);
+  sun.position.set(55, 85, -45);
+  sun.castShadow = true;
+  sun.shadow.mapSize.width = 2048;
+  sun.shadow.mapSize.height = 2048;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.04;
+  Object.assign(sun.shadow.camera, { left: -65, right: 65, top: 65, bottom: -65, near: 0.1, far: 250 });
+  scene.add(sun);
+  scene.add(new THREE.HemisphereLight(0xb6dcef, 0x6a8c5a, 0.6));
+
+  // ---------- Atmospheric sky (Three.js Sky shader, transcribed) ----------
+  // Falls back gracefully to flat color if shader compilation fails.
+  let skyMesh = null;
+  try {
+    const skyVert = `
+      varying vec3 vWorldPosition;
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+    const skyFrag = `
+      uniform vec3 sunPosition;
+      uniform float rayleigh;
+      uniform float turbidity;
+      uniform float mieCoefficient;
+      uniform float mieDirectionalG;
+      varying vec3 vWorldPosition;
+      const vec3 up = vec3(0.0, 1.0, 0.0);
+      const float e = 2.71828182845904523536028747135266249775724709369995957;
+      const float pi = 3.141592653589793238462643383279502884197169;
+      const vec3 lambda = vec3(680E-9, 550E-9, 450E-9);
+      const float v = 4.0;
+      const vec3 K = vec3(0.686, 0.678, 0.666);
+      const vec3 MieConst = vec3(1.8399918514433978E14, 2.7798023919660528E14, 4.0790479543861094E14);
+      const float cutoffAngle = 1.6110731556870734;
+      const float steepness = 1.5;
+      const float EE = 1000.0;
+      float sunIntensity(float zenithAngleCos) {
+        zenithAngleCos = clamp(zenithAngleCos, -1.0, 1.0);
+        return EE * max(0.0, 1.0 - pow(e, -((cutoffAngle - acos(zenithAngleCos))/steepness)));
+      }
+      vec3 totalMie(float T) {
+        float c = (0.2 * T) * 10E-18;
+        return 0.434 * c * MieConst;
+      }
+      void main() {
+        vec3 vSunDirection = normalize(sunPosition);
+        float vSunE = sunIntensity(dot(vSunDirection, up));
+        float vSunfade = 1.0 - clamp(1.0 - exp((sunPosition.y / 450000.0)), 0.0, 1.0);
+        float rayleighCoefficient = rayleigh - (1.0 * (1.0 - vSunfade));
+        vec3 vBetaR = vec3(5.804542996261093E-6, 1.3562911419845635E-5, 3.0265902468824876E-5) * rayleighCoefficient;
+        vec3 vBetaM = totalMie(turbidity) * mieCoefficient;
+        vec3 direction = normalize(vWorldPosition - cameraPosition);
+        float zenithAngle = acos(max(0.0, dot(up, direction)));
+        float inverse = 1.0 / (cos(zenithAngle) + 0.15 * pow(93.885 - ((zenithAngle * 180.0) / pi), -1.253));
+        float sR = 8.4E3 * inverse;
+        float sM = 1.25E3 * inverse;
+        vec3 Fex = exp(-(vBetaR * sR + vBetaM * sM));
+        float cosTheta = dot(direction, vSunDirection);
+        float rPhase = (3.0 / (16.0 * pi)) * (1.0 + pow(cosTheta * 0.5 + 0.5, 2.0));
+        vec3 betaRTheta = vBetaR * rPhase;
+        float g = mieDirectionalG;
+        float mPhase = (1.0 / (4.0 * pi)) * ((1.0 - pow(g, 2.0)) / pow(1.0 - 2.0 * g * cosTheta + pow(g, 2.0), 1.5));
+        vec3 betaMTheta = vBetaM * mPhase;
+        vec3 Lin = pow(vSunE * ((betaRTheta + betaMTheta) / (vBetaR + vBetaM)) * (1.0 - Fex), vec3(1.5));
+        Lin *= mix(vec3(1.0), pow(vSunE * ((betaRTheta + betaMTheta) / (vBetaR + vBetaM)) * Fex, vec3(0.5)), clamp(pow(1.0 - dot(up, vSunDirection), 5.0), 0.0, 1.0));
+        vec3 L0 = vec3(0.1) * Fex;
+        float sundisk = smoothstep(0.9999556, 0.99995931, cosTheta);
+        L0 += (vSunE * 19000.0 * Fex) * sundisk;
+        vec3 texColor = (Lin + L0) * 0.04 + vec3(0.0, 0.0003, 0.00075);
+        vec3 retColor = pow(texColor, vec3(1.0 / (1.2 + (1.2 * vSunfade))));
+        gl_FragColor = vec4(retColor, 1.0);
+      }
+    `;
+    const skyUniforms = {
+      sunPosition: { value: new THREE.Vector3() },
+      rayleigh: { value: 1.5 },
+      turbidity: { value: 6 },
+      mieCoefficient: { value: 0.005 },
+      mieDirectionalG: { value: 0.85 }
+    };
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: skyUniforms,
+      vertexShader: skyVert,
+      fragmentShader: skyFrag,
+      side: THREE.BackSide,
+      depthWrite: false
+    });
+    // Position sun in the sky (elevation, azimuth)
+    const sunSph = new THREE.Vector3();
+    const phi = (90 - 38) * Math.PI / 180; // 38° elevation (warm late-afternoon tropical sun)
+    const theta = (-25) * Math.PI / 180;   // 25° west of south
+    sunSph.x = Math.sin(phi) * Math.cos(theta);
+    sunSph.z = Math.sin(phi) * Math.sin(theta);
+    sunSph.y = Math.cos(phi);
+    skyUniforms.sunPosition.value.copy(sunSph);
+    skyMesh = new THREE.Mesh(new THREE.SphereGeometry(450, 32, 16), skyMat);
+    skyMesh.frustumCulled = false;
+    scene.add(skyMesh);
+    // Re-orient the directional sun to match the sky sun direction
+    sun.position.copy(sunSph.clone().multiplyScalar(120));
+  } catch(skyErr) {
+    console.warn('Sky shader failed, keeping flat color:', skyErr);
+  }
+
+  // ---------- Sun disk (visual) ----------
+  const sunDiskDir = new THREE.Vector3(55, 85, -45).normalize();
+  const sunDisk = new THREE.Mesh(
+    new THREE.SphereGeometry(6, 24, 16),
+    new THREE.MeshBasicMaterial({ color: 0xfffaee, fog: false })
+  );
+  sunDisk.position.copy(sunDiskDir.clone().multiplyScalar(280));
+  scene.add(sunDisk);
+
+  // ---------- Drifting clouds (layered sphere puffs) ----------
+  const clouds = [];
+  function addCloud(x, y, z, size) {
+    const cloud = new THREE.Group();
+    const blobs = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < blobs; i++) {
+      const r = size * (0.55 + Math.random() * 0.45);
+      const b = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 14, 10),
+        new THREE.MeshLambertMaterial({ color: 0xfafcff, emissive: 0x404550, emissiveIntensity: 0.08 })
+      );
+      b.position.set(
+        (i - blobs / 2) * size * 0.65 + (Math.random() - 0.5) * size * 0.2,
+        Math.random() * size * 0.18,
+        (Math.random() - 0.5) * size * 0.4
+      );
+      cloud.add(b);
+    }
+    cloud.position.set(x, y, z);
+    cloud.userData = { drift: 0.005 + Math.random() * 0.01, range: 200 };
+    scene.add(cloud);
+    clouds.push(cloud);
+  }
+  for (let i = 0; i < 7; i++) {
+    addCloud(
+      -160 + Math.random() * 320,
+      52 + Math.random() * 30,
+      -150 + Math.random() * 80,
+      8 + Math.random() * 7
+    );
+  }
+
+  // ---------- Procedural canvas textures ----------
+  function makeCanvasTex(w, h, draw, repeatX, repeatY) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    draw(ctx, w, h);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(repeatX || 1, repeatY || 1);
+    tex.anisotropy = 4;
+    return tex;
+  }
+
+  const grassTex = makeCanvasTex(256, 256, (ctx) => {
+    ctx.fillStyle = '#5d9450';
+    ctx.fillRect(0, 0, 256, 256);
+    // Patches of variation
+    for (let i = 0; i < 80; i++) {
+      const x = Math.random() * 256, y = Math.random() * 256;
+      const r = 6 + Math.random() * 14;
+      ctx.fillStyle = `rgba(${80 + Math.random() * 50}, ${130 + Math.random() * 50}, ${50 + Math.random() * 30}, 0.45)`;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+    // Fine grass blades
+    for (let i = 0; i < 4500; i++) {
+      const x = Math.random() * 256, y = Math.random() * 256;
+      ctx.fillStyle = Math.random() > 0.5 ? '#7eb95f' : '#4a7d3f';
+      ctx.fillRect(x, y, 1, 1 + Math.random() * 2);
+    }
+    // Tiny flowers
+    for (let i = 0; i < 30; i++) {
+      const x = Math.random() * 256, y = Math.random() * 256;
+      ctx.fillStyle = ['#ffe680', '#ffb3c6', '#ffffff', '#fcd6a8'][Math.floor(Math.random() * 4)];
+      ctx.beginPath(); ctx.arc(x, y, 1.2, 0, Math.PI * 2); ctx.fill();
+    }
+  }, 18, 18);
+
+  const sandTex = makeCanvasTex(256, 256, (ctx) => {
+    ctx.fillStyle = '#ecd4a3';
+    ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 6000; i++) {
+      const x = Math.random() * 256, y = Math.random() * 256;
+      const v = 0.7 + Math.random() * 0.3;
+      ctx.fillStyle = `rgba(${230*v|0}, ${200*v|0}, ${150*v|0}, 0.6)`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+    // Some shells / dark specks
+    for (let i = 0; i < 20; i++) {
+      const x = Math.random() * 256, y = Math.random() * 256;
+      ctx.fillStyle = `rgba(0,0,0,0.15)`;
+      ctx.beginPath(); ctx.arc(x, y, 0.8 + Math.random() * 1.2, 0, Math.PI * 2); ctx.fill();
+    }
+  }, 8, 1);
+
+  const stuccoTex = makeCanvasTex(128, 128, (ctx) => {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 1500; i++) {
+      const x = Math.random() * 128, y = Math.random() * 128;
+      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.07})`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+    for (let i = 0; i < 60; i++) {
+      const x = Math.random() * 128, y = Math.random() * 128;
+      ctx.fillStyle = `rgba(0,0,0,${0.04 + Math.random() * 0.06})`;
+      ctx.beginPath(); ctx.arc(x, y, 1 + Math.random() * 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }, 1, 1);
+
+  const tileRoofTex = makeCanvasTex(128, 64, (ctx) => {
+    ctx.fillStyle = '#f4f4f4';
+    ctx.fillRect(0, 0, 128, 64);
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth = 0.6;
+    // Horizontal tile rows
+    for (let y = 0; y <= 64; y += 8) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke();
+    }
+    // Vertical staggered seams
+    for (let row = 0; row < 8; row++) {
+      const y = row * 8;
+      const off = (row % 2) * 8;
+      for (let x = off; x < 128; x += 16) {
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 8); ctx.stroke();
+      }
+    }
+    // Subtle shading
+    for (let i = 0; i < 200; i++) {
+      const x = Math.random() * 128, y = Math.random() * 64;
+      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.07})`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }, 3, 3);
+
+  const pavementTex = makeCanvasTex(128, 128, (ctx) => {
+    ctx.fillStyle = '#e8e0cc';
+    ctx.fillRect(0, 0, 128, 128);
+    // Aggregate specks
+    for (let i = 0; i < 800; i++) {
+      const x = Math.random() * 128, y = Math.random() * 128;
+      const shade = Math.random();
+      ctx.fillStyle = shade > 0.5 ? `rgba(0,0,0,0.18)` : `rgba(255,240,200,0.4)`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+    // Cracks
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 0.5;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      let x = Math.random() * 128, y = Math.random() * 128;
+      ctx.moveTo(x, y);
+      for (let j = 0; j < 4; j++) {
+        x += (Math.random() - 0.5) * 50;
+        y += (Math.random() - 0.5) * 50;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }, 4, 4);
+
+  const concreteTex = makeCanvasTex(128, 128, (ctx) => {
+    ctx.fillStyle = '#c9c1ad';
+    ctx.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 800; i++) {
+      const x = Math.random() * 128, y = Math.random() * 128;
+      ctx.fillStyle = `rgba(${100 + Math.random() * 100}, ${100 + Math.random() * 100}, ${100 + Math.random() * 100}, 0.3)`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+    // Slab seams
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.6;
+    for (let i = 0; i <= 128; i += 32) {
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(128, i); ctx.stroke();
+    }
+  }, 6, 6);
+
+  const woodTex = makeCanvasTex(128, 32, (ctx) => {
+    ctx.fillStyle = '#8b6f47';
+    ctx.fillRect(0, 0, 128, 32);
+    for (let i = 0; i < 6; i++) {
+      ctx.strokeStyle = `rgba(0,0,0,${0.1 + Math.random() * 0.1})`;
+      ctx.lineWidth = 0.5 + Math.random();
+      ctx.beginPath();
+      const y = Math.random() * 32;
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= 128; x += 8) {
+        ctx.lineTo(x, y + Math.sin(x * 0.1) * 1.5);
+      }
+      ctx.stroke();
+    }
+  }, 1, 1);
+
+  // Memory for heat-overlay
+  const colorMemory = new Map();
+  function remember(mesh) { if (mesh.material && mesh.material.color) colorMemory.set(mesh, mesh.material.color.getHex()); }
+  function tag(mesh, type, name, desc) { mesh.userData = { type, name, desc }; remember(mesh); return mesh; }
+
+  // ---------- Ground: lush tropical green (textured) ----------
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(160, 160, 1, 1),
+    new THREE.MeshLambertMaterial({ map: grassTex, color: 0xffffff })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  tag(ground, 'grass', 'Lush tropical grass', 'In São Tomé\'s wet equatorial climate, ground stays green year-round. Permeable soil absorbs heavy rains and stays cool.');
+  scene.add(ground);
+
+  // ---------- Atlantic coastline (south edge of neighborhood) ----------
+  // Sandy beach strip with texture
+  const beach = new THREE.Mesh(
+    new THREE.PlaneGeometry(220, 14),
+    new THREE.MeshLambertMaterial({ map: sandTex, color: 0xffffff })
+  );
+  beach.rotation.x = -Math.PI / 2;
+  beach.position.set(0, 0.012, 42);
+  beach.receiveShadow = true;
+  tag(beach, 'beach', 'Sandy beach', 'The Atlantic shoreline gives the neighborhood a constant cool sea breeze. Black volcanic sand is common in São Tomé!');
+  scene.add(beach);
+
+  // Wet sand (darker, between dry beach and water line)
+  const wetSand = new THREE.Mesh(
+    new THREE.PlaneGeometry(220, 4),
+    new THREE.MeshLambertMaterial({ map: sandTex, color: 0xbf9e6e })
+  );
+  wetSand.rotation.x = -Math.PI / 2;
+  wetSand.position.set(0, 0.014, 51);
+  scene.add(wetSand);
+
+  // ---------- Ocean: simple flat-shaded water plane ----------
+  const oceanMat = new THREE.MeshPhongMaterial({
+    color: 0x2784ab,
+    shininess: 80,
+    specular: 0x6cb6dd
+  });
+  const ocean = new THREE.Mesh(new THREE.PlaneGeometry(260, 130), oceanMat);
+  ocean.rotation.x = -Math.PI / 2;
+  ocean.position.set(0, 0.005, 115);
+  tag(ocean, 'water', 'Atlantic Ocean', 'The Gulf of Guinea moderates São Tomé\'s temperature year-round. Sea breezes can drop coastal air by 3–5°F.');
+  scene.add(ocean);
+  // Lighter band toward shore (visual depth without shader)
+  const shallowOcean = new THREE.Mesh(
+    new THREE.PlaneGeometry(260, 12),
+    new THREE.MeshLambertMaterial({ color: 0x6abad2, transparent: true, opacity: 0.85 })
+  );
+  shallowOcean.rotation.x = -Math.PI / 2;
+  shallowOcean.position.set(0, 0.008, 56);
+  scene.add(shallowOcean);
+
+  // Foam strip along shoreline (animated alpha later)
+  const foamStrips = [];
+  for (let i = -100; i <= 100; i += 3.5) {
+    const foam = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.0 + Math.random() * 2.0, 0.7 + Math.random() * 0.4),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false })
+    );
+    foam.rotation.x = -Math.PI / 2;
+    foam.position.set(i + (Math.random() - 0.5) * 2.5, 0.018, 50.5 + Math.random() * 1.2);
+    foam.userData.phase = Math.random() * Math.PI * 2;
+    foamStrips.push(foam);
+    scene.add(foam);
+  }
+
+  // Tiny fishing boats
+  function addFishingBoat(x, z, color) {
+    const g = new THREE.Group(); g.position.set(x, 0.1, z);
+    const hull = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5, 0.4, 0.9),
+      new THREE.MeshLambertMaterial({ color: color || 0xf09595 })
+    );
+    hull.position.y = 0.2;
+    g.add(hull);
+    // Pointed bow
+    const bow = new THREE.Mesh(
+      new THREE.ConeGeometry(0.45, 0.8, 4),
+      new THREE.MeshLambertMaterial({ color: color || 0xf09595 })
+    );
+    bow.rotation.z = -Math.PI / 2; bow.position.set(1.6, 0.2, 0); bow.rotation.x = Math.PI / 4;
+    g.add(bow);
+    // Mast
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 6), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
+    mast.position.set(0, 1, 0); g.add(mast);
+    tag(hull, 'transit', 'Traditional fishing boat', 'Small wooden boats (canoas) are part of daily life in São Tomé. Local fishing means less long-haul refrigerated transport — and cooler air in the streets.');
+    scene.add(g);
+  }
+  addFishingBoat(-15, 65, 0xf4c0d1);
+  addFishingBoat(5, 75, 0xfac775);
+  addFishingBoat(20, 60, 0xc0dd97);
+
+  // Darker grass patches (gardens / lawns)
+  function addLawnPatch(x, z, w, d) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ color: 0x639922 }));
+    m.rotation.x = -Math.PI / 2; m.position.set(x, 0.005, z); m.receiveShadow = true;
+    tag(m, 'grass', 'Lawn', 'Native grass needs less water than turf and stays green during heatwaves.');
+    scene.add(m);
+  }
+
+  // ---------- Streets (light pavement, textured) ----------
+  const streetMat = new THREE.MeshLambertMaterial({ map: pavementTex, color: 0xffffff });
+  function addStreet(x, z, w, d) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), streetMat.clone());
+    m.rotation.x = -Math.PI / 2; m.position.set(x, 0.02, z); m.receiveShadow = true;
+    tag(m, 'pavement', 'Light-colored pavement', 'Cream-colored asphalt reflects ~35% of sunlight versus 5% for black asphalt. Cooler streets = cooler air.');
+    scene.add(m);
+  }
+  addStreet(0, -22, 100, 5);
+  addStreet(0, 22, 100, 5);
+  addStreet(0, 0, 100, 5);
+  addStreet(-22, 0, 5, 100);
+  addStreet(22, 0, 5, 100);
+
+  // Sidewalks (slightly raised, light concrete texture)
+  function addSidewalk(x, z, w, d) {
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(w, 0.08, d),
+      new THREE.MeshLambertMaterial({ map: concreteTex, color: 0xffffff })
+    );
+    m.position.set(x, 0.04, z); m.receiveShadow = true;
+    tag(m, 'pavement', 'Sidewalk', 'Light concrete sidewalks stay cool underfoot and connect every house to bike lanes & transit.');
+    scene.add(m);
+  }
+  // Sidewalks parallel to all streets
+  function lineSidewalks(x, z, w, d, axis) {
+    if (axis === 'h') {
+      addSidewalk(x, z - d/2 - 0.7, w, 1.0);
+      addSidewalk(x, z + d/2 + 0.7, w, 1.0);
+    } else {
+      addSidewalk(x - d/2 - 0.7, z, 1.0, w);
+      addSidewalk(x + d/2 - -0.7, z, 1.0, w);
+    }
+  }
+  // Use simpler manual placements
+  addSidewalk(0, -25, 100, 1); addSidewalk(0, -19, 100, 1);
+  addSidewalk(0, 25, 100, 1); addSidewalk(0, 19, 100, 1);
+  addSidewalk(0, 3, 100, 1); addSidewalk(0, -3, 100, 1);
+  addSidewalk(-25, 0, 1, 100); addSidewalk(-19, 0, 1, 100);
+  addSidewalk(25, 0, 1, 100); addSidewalk(19, 0, 1, 100);
+  addSidewalk(-3, 0, 1, 100); addSidewalk(3, 0, 1, 100);
+
+  // Crosswalks (white stripes) at intersections
+  function addCrosswalk(x, z, dir) {
+    for (let i = -2; i <= 2; i++) {
+      const stripe = new THREE.Mesh(
+        new THREE.PlaneGeometry(dir === 'h' ? 4 : 0.5, dir === 'h' ? 0.5 : 4),
+        new THREE.MeshLambertMaterial({ color: 0xffffff })
+      );
+      stripe.rotation.x = -Math.PI / 2;
+      if (dir === 'h') stripe.position.set(x, 0.025, z + i * 0.7);
+      else stripe.position.set(x + i * 0.7, 0.025, z);
+      scene.add(stripe);
+    }
+  }
+  // Crosswalks at central intersection
+  addCrosswalk(-3.5, 0, 'h'); addCrosswalk(3.5, 0, 'h');
+  addCrosswalk(0, -3.5, 'v'); addCrosswalk(0, 3.5, 'v');
+
+  // ---------- Bike lanes ----------
+  function addBike(x, z, w, d) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ color: 0x5dcaa5 }));
+    m.rotation.x = -Math.PI / 2; m.position.set(x, 0.04, z);
+    tag(m, 'bike', 'Green transit lane', 'Protected bike lanes replace one car lane. Fewer cars = less exhaust heat & cleaner air.');
+    scene.add(m);
+  }
+  addBike(0, -24.6, 100, 0.7); addBike(0, -19.4, 100, 0.7);
+  addBike(0, 19.4, 100, 0.7); addBike(0, 24.6, 100, 0.7);
+  addBike(-24.6, 0, 0.7, 100); addBike(-19.4, 0, 0.7, 100);
+  addBike(19.4, 0, 0.7, 100); addBike(24.6, 0, 0.7, 100);
+
+  // ---------- Houses with pitched roofs ----------
+  function makePitchedRoof(w, d, h, color) {
+    const shape = new THREE.Shape();
+    shape.moveTo(-w/2, 0); shape.lineTo(w/2, 0);
+    shape.lineTo(0, h); shape.lineTo(-w/2, 0);
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false });
+    geo.translate(0, 0, -d/2);
+    // Use the tile roof texture for white tile look (no clone — share)
+    const mat = new THREE.MeshLambertMaterial({ map: tileRoofTex, color: 0xfdfdfa });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  function addWindow(parent, x, y, z, w, h, faceAxis) {
+    const win = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshLambertMaterial({ color: 0x85b7eb })
+    );
+    if (faceAxis === '+z') { win.position.set(x, y, z + 0.01); }
+    else if (faceAxis === '-z') { win.position.set(x, y, z - 0.01); win.rotation.y = Math.PI; }
+    else if (faceAxis === '+x') { win.position.set(x + 0.01, y, z); win.rotation.y = Math.PI/2; }
+    else if (faceAxis === '-x') { win.position.set(x - 0.01, y, z); win.rotation.y = -Math.PI/2; }
+    parent.add(win);
+  }
+  function addDoor(parent, x, y, z, w, h, faceAxis, color) {
+    const door = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshLambertMaterial({ color: color || 0x6b4423 })
+    );
+    if (faceAxis === '+z') { door.position.set(x, y, z + 0.01); }
+    else if (faceAxis === '-z') { door.position.set(x, y, z - 0.01); door.rotation.y = Math.PI; }
+    else if (faceAxis === '+x') { door.position.set(x + 0.01, y, z); door.rotation.y = Math.PI/2; }
+    else if (faceAxis === '-x') { door.position.set(x - 0.01, y, z); door.rotation.y = -Math.PI/2; }
+    parent.add(door);
+  }
+
+  // House: walls + pitched roof (white) + windows + door
+  function addHouse(x, z, kind) {
+    // São Tomé Portuguese colonial pastels: warm yellow, salmon pink, sky blue, mint, coral
+    const stomePastels = [0xf5d76e, 0xf4a896, 0xa8c8e8, 0xb8d4b0, 0xf0b9a8, 0xeac46a, 0xc9b8e0, 0xf2d7a3];
+    const palette = kind === 'cooling' ? 0xd85a30 : (kind === 'school' ? 0xefdbb2 : stomePastels[Math.floor(Math.random() * stomePastels.length)]);
+    const w = 5 + Math.random() * 1.2;
+    const d = 5 + Math.random() * 1.2;
+    const h = 3 + Math.random() * 1.2;
+    const roofH = 1.5 + Math.random() * 0.6;
+    const facing = ['+z', '-z', '+x', '-x'][Math.floor(Math.random() * 4)];
+
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+
+    // Walls (stucco texture tinted with the pastel palette)
+    const walls = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshLambertMaterial({ map: stuccoTex, color: palette })
+    );
+    walls.position.y = h / 2;
+    walls.castShadow = true; walls.receiveShadow = true;
+    group.add(walls);
+    remember(walls);
+
+    // White pitched roof with generous overhang (eaves give shade to walls)
+    const roof = makePitchedRoof(w * 1.18, d * 1.18, roofH, 0xf5f5f5);
+    roof.position.y = h;
+    group.add(roof);
+    remember(roof);
+
+    // Roof underside (subtle dark plane to suggest eaves shadow)
+    const underEave = new THREE.Mesh(
+      new THREE.PlaneGeometry(w * 1.18, d * 1.18),
+      new THREE.MeshLambertMaterial({ color: 0xc8b89a })
+    );
+    underEave.rotation.x = Math.PI / 2;
+    underEave.position.y = h - 0.01;
+    group.add(underEave);
+
+    // Chimney (small white box)
+    const chim = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 0.6, 0.4),
+      new THREE.MeshLambertMaterial({ color: 0xeeeeee })
+    );
+    chim.position.set(w/4, h + roofH * 0.6, d/4);
+    chim.castShadow = true;
+    group.add(chim);
+    remember(chim);
+
+    // Windows on all 4 faces (with painted shutters next to them)
+    function addShutters(parent, cx, cy, cz, winW, winH, faceAxis, color) {
+      const shutterW = winW * 0.55;
+      const offset = winW * 0.55 + shutterW * 0.5;
+      [-1, 1].forEach(side => {
+        const sh = new THREE.Mesh(
+          new THREE.PlaneGeometry(shutterW, winH * 1.05),
+          new THREE.MeshLambertMaterial({ color: color, side: THREE.DoubleSide })
+        );
+        if (faceAxis === '+z') { sh.position.set(cx + side * offset, cy, cz + 0.012); }
+        else if (faceAxis === '-z') { sh.position.set(cx + side * offset, cy, cz - 0.012); sh.rotation.y = Math.PI; }
+        else if (faceAxis === '+x') { sh.position.set(cx + 0.012, cy, cz + side * offset); sh.rotation.y = Math.PI/2; }
+        else if (faceAxis === '-x') { sh.position.set(cx - 0.012, cy, cz + side * offset); sh.rotation.y = -Math.PI/2; }
+        parent.add(sh);
+      });
+    }
+    const shutterColors = [0x534ab7, 0x0f6e56, 0x993c1d, 0x442266, 0x1c3f7a, 0x5e3520];
+    const sc = shutterColors[Math.floor(Math.random() * shutterColors.length)];
+    addWindow(group, -w/4, h*0.55, d/2, 0.7, 0.7, '+z'); addShutters(group, -w/4, h*0.55, d/2, 0.7, 0.7, '+z', sc);
+    addWindow(group, w/4, h*0.55, d/2, 0.7, 0.7, '+z');  addShutters(group, w/4, h*0.55, d/2, 0.7, 0.7, '+z', sc);
+    addWindow(group, -w/4, h*0.55, -d/2, 0.7, 0.7, '-z'); addShutters(group, -w/4, h*0.55, -d/2, 0.7, 0.7, '-z', sc);
+    addWindow(group, w/4, h*0.55, -d/2, 0.7, 0.7, '-z');  addShutters(group, w/4, h*0.55, -d/2, 0.7, 0.7, '-z', sc);
+    addWindow(group, w/2, h*0.55, 0, 0.7, 0.7, '+x');     addShutters(group, w/2, h*0.55, 0, 0.7, 0.7, '+x', sc);
+    addWindow(group, -w/2, h*0.55, 0, 0.7, 0.7, '-x');    addShutters(group, -w/2, h*0.55, 0, 0.7, 0.7, '-x', sc);
+
+    // Window sills (small ledges below each window)
+    function addSill(parent, cx, cy, cz, winW, faceAxis) {
+      const sill = new THREE.Mesh(
+        new THREE.BoxGeometry(winW * 1.4, 0.05, 0.15),
+        new THREE.MeshLambertMaterial({ color: 0xeeeeee })
+      );
+      const sy = cy - 0.42;
+      if (faceAxis === '+z') { sill.position.set(cx, sy, cz + 0.07); }
+      else if (faceAxis === '-z') { sill.position.set(cx, sy, cz - 0.07); }
+      else if (faceAxis === '+x') { sill.position.set(cx + 0.07, sy, cz); sill.rotation.y = Math.PI/2; }
+      else if (faceAxis === '-x') { sill.position.set(cx - 0.07, sy, cz); sill.rotation.y = -Math.PI/2; }
+      parent.add(sill);
+    }
+    addSill(group, -w/4, h*0.55, d/2, 0.7, '+z');
+    addSill(group, w/4, h*0.55, d/2, 0.7, '+z');
+    addSill(group, -w/4, h*0.55, -d/2, 0.7, '-z');
+    addSill(group, w/4, h*0.55, -d/2, 0.7, '-z');
+    addSill(group, w/2, h*0.55, 0, 0.7, '+x');
+    addSill(group, -w/2, h*0.55, 0, 0.7, '-x');
+
+    // Roof details: TV antenna, satellite dish, AC unit on the wall, downspouts
+    if (kind === 'home') {
+      // Antenna (random tall stick on the roof)
+      if (Math.random() > 0.4) {
+        const antPole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.025, 0.025, 1.4, 6),
+          new THREE.MeshLambertMaterial({ color: 0x444444 })
+        );
+        antPole.position.set((Math.random() - 0.5) * w * 0.4, h + roofH + 0.7, (Math.random() - 0.5) * d * 0.4);
+        group.add(antPole);
+        // Cross-bars for the antenna
+        for (let i = 0; i < 3; i++) {
+          const bar = new THREE.Mesh(
+            new THREE.BoxGeometry(0.5 - i * 0.12, 0.02, 0.02),
+            new THREE.MeshLambertMaterial({ color: 0x333333 })
+          );
+          bar.position.set(antPole.position.x, h + roofH + 0.4 + i * 0.25, antPole.position.z);
+          group.add(bar);
+        }
+      }
+      // Satellite dish
+      if (Math.random() > 0.55) {
+        const dishMount = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.04, 0.04, 0.5, 6),
+          new THREE.MeshLambertMaterial({ color: 0x666666 })
+        );
+        const dx = (Math.random() > 0.5 ? 1 : -1) * w * 0.35;
+        const dz = (Math.random() > 0.5 ? 1 : -1) * d * 0.35;
+        dishMount.position.set(dx, h + roofH + 0.25, dz);
+        group.add(dishMount);
+        const dish = new THREE.Mesh(
+          new THREE.SphereGeometry(0.3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2.5),
+          new THREE.MeshLambertMaterial({ color: 0xeaeaea, side: THREE.DoubleSide })
+        );
+        dish.rotation.x = -Math.PI / 3;
+        dish.position.set(dx, h + roofH + 0.5, dz);
+        group.add(dish);
+      }
+      // Wall-mounted AC unit
+      if (Math.random() > 0.55) {
+        const acFace = ['+z', '-z', '+x', '-x'][Math.floor(Math.random() * 4)];
+        const ac = new THREE.Mesh(
+          new THREE.BoxGeometry(0.7, 0.45, 0.35),
+          new THREE.MeshLambertMaterial({ color: 0xeeeeee })
+        );
+        if (acFace === '+z') ac.position.set(w * 0.3, h * 0.75, d/2 + 0.15);
+        else if (acFace === '-z') ac.position.set(w * 0.3, h * 0.75, -d/2 - 0.15);
+        else if (acFace === '+x') ac.position.set(w/2 + 0.15, h * 0.75, d * 0.3);
+        else ac.position.set(-w/2 - 0.15, h * 0.75, d * 0.3);
+        ac.castShadow = true;
+        group.add(ac);
+        // AC shadow line (vents)
+        const vent = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.05, 0.36),
+          new THREE.MeshLambertMaterial({ color: 0x444444 })
+        );
+        vent.position.copy(ac.position);
+        vent.position.y -= 0.15;
+        group.add(vent);
+      }
+      // Downspout (vertical white pipe on a corner)
+      const spout = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.04, h, 6),
+        new THREE.MeshLambertMaterial({ color: 0xeeeeee })
+      );
+      const corner = Math.floor(Math.random() * 4);
+      const cx = (corner % 2 === 0 ? 1 : -1) * (w/2 + 0.05);
+      const cz = (corner < 2 ? 1 : -1) * (d/2 + 0.05);
+      spout.position.set(cx, h/2, cz);
+      group.add(spout);
+      // Gutter rim along eaves
+      [-1, 1].forEach(s => {
+        const gut = new THREE.Mesh(
+          new THREE.BoxGeometry(w * 1.18 + 0.1, 0.06, 0.08),
+          new THREE.MeshLambertMaterial({ color: 0xe8e8e8 })
+        );
+        gut.position.set(0, h - 0.04, s * (d * 1.18 / 2));
+        group.add(gut);
+      });
+    }
+
+    // Door (one side, color varies)
+    const doorColors = [0x6b4423, 0x534ab7, 0x993c1d, 0x0f6e56, 0x444441];
+    const dc = doorColors[Math.floor(Math.random() * doorColors.length)];
+    if (facing === '+z') addDoor(group, 0, 1, d/2, 0.7, 1.6, '+z', dc);
+    else if (facing === '-z') addDoor(group, 0, 1, -d/2, 0.7, 1.6, '-z', dc);
+    else if (facing === '+x') addDoor(group, w/2, 1, 0, 0.7, 1.6, '+x', dc);
+    else addDoor(group, -w/2, 1, 0, 0.7, 1.6, '-x', dc);
+
+    // Front porch with two posts and a small awning (typical of São Tomé colonial homes)
+    function addPorch(faceAxis) {
+      const porchDepth = 1.4;
+      const porchW = w * 0.8;
+      const baseY = 0.05;
+      const slabH = 0.15;
+      const postH = 2.2;
+
+      // Compute orientation
+      let dx = 0, dz = 0, rotY = 0;
+      if (faceAxis === '+z') { dz = d/2 + porchDepth/2; rotY = 0; }
+      else if (faceAxis === '-z') { dz = -(d/2 + porchDepth/2); rotY = Math.PI; }
+      else if (faceAxis === '+x') { dx = w/2 + porchDepth/2; rotY = Math.PI/2; }
+      else { dx = -(w/2 + porchDepth/2); rotY = -Math.PI/2; }
+
+      const porch = new THREE.Group();
+      porch.position.set(dx, 0, dz);
+      porch.rotation.y = rotY;
+
+      // Slab (porch floor) - using concrete texture
+      const slab = new THREE.Mesh(
+        new THREE.BoxGeometry(porchW, slabH, porchDepth),
+        new THREE.MeshLambertMaterial({ map: concreteTex, color: 0xece6d6 })
+      );
+      slab.position.y = baseY + slabH / 2;
+      slab.receiveShadow = true;
+      porch.add(slab);
+
+      // Two posts (white, square)
+      const postMat = new THREE.MeshLambertMaterial({ color: 0xfaf5e6 });
+      [-porchW * 0.4, porchW * 0.4].forEach(px => {
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.18, postH, 0.18),
+          postMat
+        );
+        post.position.set(px, baseY + slabH + postH / 2, porchDepth / 2 - 0.1);
+        post.castShadow = true;
+        porch.add(post);
+      });
+
+      // Awning (small flat roof over porch, white)
+      const awn = new THREE.Mesh(
+        new THREE.BoxGeometry(porchW + 0.3, 0.12, porchDepth + 0.2),
+        new THREE.MeshLambertMaterial({ color: 0xf5f5f5 })
+      );
+      awn.position.y = baseY + slabH + postH;
+      awn.castShadow = true;
+      porch.add(awn);
+
+      // Hammock or chair? — small bench
+      const benchMat = new THREE.MeshLambertMaterial({ color: 0x8b6f47 });
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(porchW * 0.5, 0.1, 0.3), benchMat);
+      bench.position.set(0, baseY + slabH + 0.4, -porchDepth * 0.2);
+      porch.add(bench);
+      const benchBack = new THREE.Mesh(new THREE.BoxGeometry(porchW * 0.5, 0.4, 0.06), benchMat);
+      benchBack.position.set(0, baseY + slabH + 0.6, -porchDepth * 0.2 - 0.13);
+      porch.add(benchBack);
+
+      group.add(porch);
+    }
+    if (kind === 'home') addPorch(facing);
+
+    // Solar panel ~50% chance
+    if (kind === 'home' && Math.random() > 0.45) {
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(w * 0.55, 0.08, d * 0.4),
+        new THREE.MeshLambertMaterial({ color: 0x185fa5 })
+      );
+      panel.rotation.x = -Math.atan(roofH / (d/2)) + 0.05;
+      panel.position.set(0, h + roofH * 0.55, d * 0.18);
+      tag(panel, 'solar', 'Rooftop solar', 'Solar panels both shade the roof and power AC with clean energy.');
+      group.add(panel);
+    }
+
+    // userData
+    let ud;
+    if (kind === 'cooling') ud = { type: 'cooling', name: 'Community cooling center', desc: 'Public AC, free water, naps welcome. A safe place during heatwaves for people without AC at home.' };
+    else if (kind === 'school') ud = { type: 'cooling', name: 'School (also a cooling center)', desc: 'On hot days, the school gym opens as a public cool zone with water and shade.' };
+    else ud = { type: 'building', name: 'Pastel home with white roof', desc: 'Portuguese colonial pastel walls with a white-painted roof. The white roof reflects São Tomé\'s near-vertical equatorial sun, keeping interiors 5–10°F cooler.' };
+    walls.userData = ud; roof.userData = ud;
+
+    // Cooling center marker (blue flag)
+    if (kind === 'cooling') {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2, 6), new THREE.MeshLambertMaterial({ color: 0x444444 }));
+      pole.position.set(0, h + roofH + 1, 0);
+      group.add(pole);
+      const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.7), new THREE.MeshLambertMaterial({ color: 0x4aa3df, side: THREE.DoubleSide }));
+      flag.position.set(0.6, h + roofH + 1.6, 0);
+      tag(flag, 'cooling', 'Cooling center flag', 'A blue flag marks community cooling centers — easy to spot when you need somewhere cool to go.');
+      group.add(flag);
+    }
+    scene.add(group);
+  }
+
+  // House placement
+  const homePositions = [
+    [8, -8], [8, -14], [14, -8], [14, -14],
+    [-8, -8], [-8, -14], [-14, -14],
+    [-8, 8], [-8, 14], [-14, 8], [-14, 14],
+    [8, 8], [14, 8], [14, 14]
+  ];
+  homePositions.forEach(p => addHouse(p[0], p[1], 'home'));
+  addHouse(-14, -8, 'cooling');
+  addHouse(8, 14, 'school');
+  addHouse(-8, -22, 'cooling');
+
+  // Add lawn patches to most yards
+  homePositions.concat([[-14, -8], [-8, -22]]).forEach(p => {
+    addLawnPatch(p[0], p[1] - 2.6, 4, 1);
+    addLawnPatch(p[0], p[1] + 2.6, 4, 1);
+  });
+
+  // ---------- Pond + reeds + lily pads + fountain ----------
+  const pond = new THREE.Mesh(
+    new THREE.CircleGeometry(4, 48),
+    new THREE.MeshPhongMaterial({ color: 0x4aa3df, shininess: 80, specular: 0x99ccee })
+  );
+  pond.rotation.x = -Math.PI / 2;
+  pond.position.set(0, 0.06, 0);
+  tag(pond, 'water', 'Freshwater cooling pond', 'Open water cools the surrounding air through evaporation — extra important in São Tomé\'s humid climate. The pond also collects heavy rainfall during the wet seasons.');
+  scene.add(pond);
+
+  // Pond rim (stone)
+  const rim = new THREE.Mesh(
+    new THREE.RingGeometry(4, 4.4, 48),
+    new THREE.MeshLambertMaterial({ color: 0xb4b2a9 })
+  );
+  rim.rotation.x = -Math.PI / 2; rim.position.set(0, 0.07, 0);
+  scene.add(rim);
+
+  // Reeds around pond
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2 + Math.random() * 0.2;
+    const r = 4.2 + Math.random() * 0.4;
+    const reed = new THREE.Mesh(
+      new THREE.ConeGeometry(0.05, 0.8 + Math.random() * 0.4, 4),
+      new THREE.MeshLambertMaterial({ color: 0x97c459 })
+    );
+    reed.position.set(Math.cos(a) * r, 0.4, Math.sin(a) * r);
+    scene.add(reed);
+  }
+  // Lily pads
+  for (let i = 0; i < 6; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 1.5 + Math.random() * 2;
+    const pad = new THREE.Mesh(
+      new THREE.CircleGeometry(0.3, 8),
+      new THREE.MeshLambertMaterial({ color: 0x639922 })
+    );
+    pad.rotation.x = -Math.PI/2;
+    pad.position.set(Math.cos(a) * r, 0.07, Math.sin(a) * r);
+    scene.add(pad);
+  }
+
+  // Fountain
+  const fountainBase = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.6, 0.8, 0.3, 16),
+    new THREE.MeshLambertMaterial({ color: 0xb4b2a9 })
+  );
+  fountainBase.position.set(0, 0.2, 0);
+  scene.add(fountainBase);
+  const fountainSpray = new THREE.Mesh(
+    new THREE.ConeGeometry(0.7, 2.2, 16, 1, true),
+    new THREE.MeshLambertMaterial({ color: 0x85b7eb, transparent: true, opacity: 0.6 })
+  );
+  fountainSpray.position.set(0, 1.4, 0);
+  tag(fountainSpray, 'water', 'Misting fountain', 'Mist evaporates as it falls, cooling the air around it.');
+  scene.add(fountainSpray);
+
+  // ---------- Tropical trees: palms, bananas, mangoes, flamboyants ----------
+  const trees = [];
+
+  // Curved palm-frond geometry: tapered, drooping, slightly rippled
+  function makeCurvedFrondGeo(length, width, droopAmt) {
+    const geo = new THREE.PlaneGeometry(length, width, 14, 4);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const ox = pos.getX(i);
+      const oy = pos.getY(i);
+      const t = (ox + length / 2) / length; // 0 at base, 1 at tip
+      // Base at origin, tip at +length
+      pos.setX(i, ox + length / 2);
+      // Taper width to a point at the tip
+      pos.setY(i, oy * (1 - t * 0.7));
+      // Droop curve: parabolic, slight rise then fall
+      const droop = -Math.pow(t, 1.7) * length * (droopAmt || 0.32);
+      // Slight ripple / scallop along width
+      const ripple = Math.sin(oy * 5) * 0.05 * (1 - t * 0.4);
+      pos.setZ(i, droop + ripple);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  // Palm trunk bark texture (dark ridged)
+  const palmBarkTex = makeCanvasTex(64, 256, (ctx) => {
+    ctx.fillStyle = '#8b6f47'; ctx.fillRect(0, 0, 64, 256);
+    // Horizontal scar lines (palm trunks have ringed scars)
+    for (let y = 0; y < 256; y += 8 + Math.random() * 4) {
+      ctx.strokeStyle = `rgba(50,40,25,${0.25 + Math.random() * 0.15})`;
+      ctx.lineWidth = 1 + Math.random();
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= 64; x += 4) ctx.lineTo(x, y + (Math.random() - 0.5) * 2);
+      ctx.stroke();
+    }
+    // Vertical fiber streaks
+    for (let i = 0; i < 30; i++) {
+      ctx.strokeStyle = `rgba(${60 + Math.random() * 40},${40 + Math.random() * 30},${20 + Math.random() * 20},${0.2 + Math.random() * 0.15})`;
+      ctx.lineWidth = 0.5 + Math.random();
+      ctx.beginPath();
+      const x = Math.random() * 64;
+      ctx.moveTo(x, 0); ctx.lineTo(x + (Math.random() - 0.5) * 6, 256);
+      ctx.stroke();
+    }
+  }, 1, 1);
+
+  function addPalmTree(x, z, scale) {
+    scale = scale || 1;
+    const totalH = 5.0 * scale;
+    const treeGroup = new THREE.Group();
+    treeGroup.position.set(x, 0, z);
+
+    // Slightly curved trunk segments with bark texture
+    const segs = 6;
+    for (let i = 0; i < segs; i++) {
+      const segH = totalH / segs;
+      const seg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16 * scale * (1 - i*0.05), 0.21 * scale * (1 - i*0.05), segH * 1.04, 12),
+        new THREE.MeshLambertMaterial({ map: palmBarkTex, color: 0xffffff })
+      );
+      seg.position.set(Math.sin(i * 0.35) * 0.22, segH/2 + i * segH, Math.cos(i * 0.35) * 0.08);
+      seg.castShadow = true;
+      treeGroup.add(seg);
+    }
+
+    // Frond cluster (curved fronds spreading from top)
+    const frondCluster = new THREE.Group();
+    frondCluster.position.set(Math.sin(segs * 0.35) * 0.22, totalH, Math.cos(segs * 0.35) * 0.08);
+
+    const frondCount = 11;
+    const frondMat = new THREE.MeshLambertMaterial({
+      color: 0x3b8c3b,
+      side: THREE.DoubleSide
+    });
+    for (let i = 0; i < frondCount; i++) {
+      // Frond holder rotates around vertical axis
+      const holder = new THREE.Group();
+      holder.rotation.y = (i / frondCount) * Math.PI * 2;
+      // Slight tilt up at base — give a tiny upward angle so the frond starts horizontal
+      const baseLift = 0.08 + Math.random() * 0.05;
+      const lengthVar = (2.6 + Math.random() * 0.5) * scale;
+      const widthVar = (0.55 + Math.random() * 0.1) * scale;
+      const droopVar = 0.28 + Math.random() * 0.12;
+      const frond = new THREE.Mesh(
+        makeCurvedFrondGeo(lengthVar, widthVar, droopVar),
+        frondMat
+      );
+      // Lay frond flat (surface up)
+      frond.rotation.x = -Math.PI / 2;
+      // Slight upward angle at base by translating up
+      frond.position.y = baseLift;
+      frond.castShadow = true;
+      tag(frond, 'tree', 'Coconut palm', 'Coconut palms thrive in São Tomé\'s coastal climate. Their high canopy gives shade without blocking the sea breeze.');
+      holder.add(frond);
+      frondCluster.add(holder);
+    }
+    // Coconut bunches under the fronds
+    const coconutMat = new THREE.MeshLambertMaterial({ color: 0x4a3018 });
+    for (let i = 0; i < 5; i++) {
+      const ca = (i / 5) * Math.PI * 2 + Math.random() * 0.5;
+      const coconut = new THREE.Mesh(
+        new THREE.SphereGeometry(0.18 * scale, 10, 8),
+        coconutMat
+      );
+      coconut.position.set(Math.cos(ca) * 0.32, -0.25 + (Math.random() - 0.5) * 0.15, Math.sin(ca) * 0.32);
+      coconut.castShadow = true;
+      frondCluster.add(coconut);
+    }
+    treeGroup.add(frondCluster);
+    scene.add(treeGroup);
+    trees.push({ group: frondCluster, base: 1 });
+  }
+
+  function addBananaPlant(x, z, scale) {
+    scale = scale || 1;
+    const treeGroup = new THREE.Group();
+    treeGroup.position.set(x, 0, z);
+
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16 * scale, 0.22 * scale, 1.6 * scale, 10),
+      new THREE.MeshLambertMaterial({ color: 0x556e26 })
+    );
+    trunk.position.y = 0.8 * scale;
+    trunk.castShadow = true;
+    treeGroup.add(trunk);
+
+    const leafGroup = new THREE.Group();
+    leafGroup.position.y = 1.6 * scale;
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const leaf = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.0 * scale, 0.7 * scale),
+        new THREE.MeshLambertMaterial({ color: 0x639922, side: THREE.DoubleSide })
+      );
+      leaf.position.set(Math.cos(a) * 0.9 * scale, 0.3, Math.sin(a) * 0.9 * scale);
+      leaf.rotation.y = -a;
+      leaf.rotation.z = -0.3 - Math.random() * 0.15;
+      leaf.castShadow = true;
+      tag(leaf, 'tree', 'Banana plant', 'Bananas grow in nearly every São Tomé yard. Big leaves give shade, the fruit feeds the family, and the plant cools the air through transpiration.');
+      leafGroup.add(leaf);
+    }
+    // Banana bunch
+    for (let i = 0; i < 6; i++) {
+      const banana = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05 * scale, 0.04 * scale, 0.4 * scale, 6),
+        new THREE.MeshLambertMaterial({ color: 0xfac775 })
+      );
+      banana.position.set(0.4, 0.05 - i * 0.07, 0.05 * (i % 2 === 0 ? 1 : -1));
+      banana.rotation.z = 0.3;
+      leafGroup.add(banana);
+    }
+    treeGroup.add(leafGroup);
+    scene.add(treeGroup);
+    trees.push({ group: leafGroup, base: 1 });
+  }
+
+  function addMangoTree(x, z, scale) {
+    scale = scale || 1;
+    const treeGroup = new THREE.Group();
+    treeGroup.position.set(x, 0, z);
+
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.25 * scale, 0.4 * scale, 1.6 * scale, 14),
+      new THREE.MeshLambertMaterial({ color: 0x6b4423 })
+    );
+    trunk.position.y = 0.8 * scale;
+    trunk.castShadow = true;
+    treeGroup.add(trunk);
+
+    const canopyGroup = new THREE.Group();
+    canopyGroup.position.y = 2.5 * scale;
+    // Many small overlapping leaf clumps for a dense, realistic canopy
+    const greens = [0x27500a, 0x2c5b1f, 0x3b6d11, 0x456e1a, 0x5a8230];
+    for (let i = 0; i < 22; i++) {
+      const r = (0.6 + Math.random() * 0.7) * scale;
+      const blob = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 10, 8),
+        new THREE.MeshLambertMaterial({ color: greens[Math.floor(Math.random() * greens.length)] })
+      );
+      const a = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 1.4 * scale;
+      blob.position.set(
+        Math.cos(a) * dist,
+        (Math.random() - 0.3) * 0.9,
+        Math.sin(a) * dist
+      );
+      blob.castShadow = true;
+      tag(blob, 'tree', 'Mango tree', 'Mango trees give deep shade and delicious fruit. One of the most planted shade trees in São Tomé.');
+      canopyGroup.add(blob);
+    }
+    // Hanging mangoes
+    for (let i = 0; i < 7; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * 1.4 * scale;
+      const mango = new THREE.Mesh(
+        new THREE.SphereGeometry(0.16 * scale, 8, 6),
+        new THREE.MeshLambertMaterial({ color: 0xef9f27 })
+      );
+      mango.position.set(Math.cos(a) * r, -0.6 - Math.random() * 0.3, Math.sin(a) * r);
+      mango.scale.y = 1.2;
+      canopyGroup.add(mango);
+    }
+    treeGroup.add(canopyGroup);
+    scene.add(treeGroup);
+    trees.push({ group: canopyGroup, base: 1 });
+  }
+
+  function addFlamboyantTree(x, z, scale) {
+    scale = scale || 1;
+    const treeGroup = new THREE.Group();
+    treeGroup.position.set(x, 0, z);
+
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.3 * scale, 0.45 * scale, 1.8 * scale, 14),
+      new THREE.MeshLambertMaterial({ color: 0x6b4423 })
+    );
+    trunk.position.y = 0.9 * scale;
+    trunk.castShadow = true;
+    treeGroup.add(trunk);
+
+    // Wide dense umbrella canopy with many leaf clumps
+    const canopyGroup = new THREE.Group();
+    canopyGroup.position.y = 2.4 * scale;
+    const greens = [0x27500a, 0x3b6d11, 0x456e1a, 0x4a7d22, 0x5a8230];
+    // Outer ring of clumps
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2 + Math.random() * 0.2;
+      const r = (0.7 + Math.random() * 0.5) * scale;
+      const blob = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 10, 8),
+        new THREE.MeshLambertMaterial({ color: greens[Math.floor(Math.random() * greens.length)] })
+      );
+      const dist = (1.1 + Math.random() * 0.4) * scale;
+      blob.position.set(Math.cos(a) * dist, (Math.random() - 0.5) * 0.3, Math.sin(a) * dist);
+      blob.scale.y = 0.55;
+      blob.castShadow = true;
+      tag(blob, 'tree', 'Flamboyant (Royal Poinciana)', 'The flamboyant explodes with red-orange flowers in the dry season and gives wide umbrella shade. Native-friendly and drought-tolerant.');
+      canopyGroup.add(blob);
+    }
+    // Inner cluster of clumps
+    for (let i = 0; i < 8; i++) {
+      const r = (0.7 + Math.random() * 0.4) * scale;
+      const blob = new THREE.Mesh(
+        new THREE.SphereGeometry(r, 10, 8),
+        new THREE.MeshLambertMaterial({ color: greens[Math.floor(Math.random() * greens.length)] })
+      );
+      blob.position.set(
+        (Math.random() - 0.5) * 1.4,
+        (Math.random() - 0.2) * 0.4,
+        (Math.random() - 0.5) * 1.4
+      );
+      blob.scale.y = 0.6;
+      canopyGroup.add(blob);
+    }
+    // Many red/orange flowers across the top (the iconic flamboyant look)
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * 2.2 * scale;
+      const flower = new THREE.Mesh(
+        new THREE.SphereGeometry(0.16 * scale, 6, 5),
+        new THREE.MeshLambertMaterial({ color: Math.random() > 0.4 ? 0xd85a30 : 0xe24b4a })
+      );
+      flower.position.set(Math.cos(a) * r, 0.2 + Math.random() * 0.2, Math.sin(a) * r);
+      canopyGroup.add(flower);
+    }
+    treeGroup.add(canopyGroup);
+    scene.add(treeGroup);
+    trees.push({ group: canopyGroup, base: 1 });
+  }
+
+  function addCocoaPlant(x, z) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.16, 1.2, 8),
+      new THREE.MeshLambertMaterial({ color: 0x4a3018 })
+    );
+    trunk.position.y = 0.6;
+    g.add(trunk);
+    const canopy = new THREE.Mesh(
+      new THREE.SphereGeometry(0.7, 10, 8),
+      new THREE.MeshLambertMaterial({ color: 0x3b6d11 })
+    );
+    canopy.position.y = 1.4;
+    canopy.scale.y = 1.2;
+    tag(canopy, 'plant', 'Cocoa tree', 'Cocoa is São Tomé\'s most famous crop! The pods grow right out of the trunk and contain the beans for chocolate.');
+    g.add(canopy);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      const pod = new THREE.Mesh(
+        new THREE.SphereGeometry(0.13, 8, 6),
+        new THREE.MeshLambertMaterial({ color: i % 2 === 0 ? 0xd85a30 : 0xfac775 })
+      );
+      pod.position.set(Math.cos(a) * 0.2, 0.7 + Math.random() * 0.3, Math.sin(a) * 0.2);
+      pod.scale.set(0.7, 1.6, 0.7);
+      g.add(pod);
+    }
+    scene.add(g);
+  }
+
+  function addTree(x, z, scale) {
+    const r = Math.random();
+    if (r < 0.40) addPalmTree(x, z, scale);
+    else if (r < 0.62) addBananaPlant(x, z, (scale || 1) * 0.85);
+    else if (r < 0.82) addMangoTree(x, z, scale);
+    else addFlamboyantTree(x, z, scale);
+  }
+
+  // Park trees
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    const r = 6 + Math.random() * 1.5;
+    addTree(Math.cos(a) * r, Math.sin(a) * r, 1.05 + Math.random() * 0.3);
+  }
+  // Street trees
+  for (let v = -28; v <= 28; v += 4) {
+    if (Math.abs(v) > 3.5) {
+      addTree(-3, v, 0.85 + Math.random() * 0.2);
+      addTree(3, v, 0.85 + Math.random() * 0.2);
+      addTree(v, -3, 0.85 + Math.random() * 0.2);
+      addTree(v, 3, 0.85 + Math.random() * 0.2);
+    }
+  }
+  // Yard trees
+  const yardSpots = [
+    [11, -11], [11, -17], [17, -11], [17, -17], [11, -5], [17, -5],
+    [-11, -11], [-11, -17], [-17, -11], [-17, -17], [-11, -5], [-17, -5],
+    [11, 11], [11, 17], [17, 11], [17, 17], [11, 5], [17, 5],
+    [-11, 11], [-11, 17], [-17, 11], [-17, 17], [-11, 5], [-17, 5],
+    [-25, -25], [25, 25], [-25, 25], [25, -25],
+    [-30, 0], [30, 0], [0, -30], [0, 30],
+    [-28, -10], [28, -10], [-28, 10], [28, 10]
+  ];
+  yardSpots.forEach(p => addTree(p[0], p[1], 0.85 + Math.random() * 0.3));
+
+  // Beach palms (placed after addPalmTree is defined and trees[] exists)
+  [-30, -22, -12, -2, 8, 18, 28].forEach(x => addPalmTree(x, 40 + Math.random() * 4, 1.0 + Math.random() * 0.3));
+
+  // ---------- Bushes & flower beds ----------
+  function addBush(x, z) {
+    const bush = new THREE.Mesh(
+      new THREE.SphereGeometry(0.5 + Math.random() * 0.3, 10, 8),
+      new THREE.MeshLambertMaterial({ color: 0x639922 })
+    );
+    bush.position.set(x, 0.4, z);
+    bush.scale.y = 0.7;
+    bush.castShadow = true;
+    tag(bush, 'plant', 'Native shrub', 'Drought-tolerant shrubs replace thirsty turf and feed pollinators.');
+    scene.add(bush);
+  }
+  function addFlowerBed(x, z) {
+    const bed = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 0.15, 0.6),
+      new THREE.MeshLambertMaterial({ color: 0x6b4423 })
+    );
+    bed.position.set(x, 0.07, z);
+    scene.add(bed);
+    const colors = [0xf09595, 0xf4c0d1, 0xfac775, 0xcecbf6, 0xffffff];
+    for (let i = 0; i < 8; i++) {
+      const f = new THREE.Mesh(
+        new THREE.SphereGeometry(0.12, 6, 6),
+        new THREE.MeshLambertMaterial({ color: colors[Math.floor(Math.random() * colors.length)] })
+      );
+      f.position.set(x - 0.85 + (i / 7) * 1.7, 0.22, z + (Math.random() - 0.5) * 0.3);
+      tag(f, 'plant', 'Pollinator flower bed', 'Native flowers cool the soil, attract bees & butterflies, and brighten the block.');
+      scene.add(f);
+    }
+  }
+
+  // Sprinkle bushes around the park and houses
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    const r = 4.8 + Math.random() * 0.5;
+    addBush(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  homePositions.forEach(p => {
+    if (Math.random() > 0.4) addBush(p[0] + 2.5, p[1] + 2.5);
+    if (Math.random() > 0.4) addBush(p[0] - 2.5, p[1] - 2.5);
+    // Cocoa in some yards (São Tomé's famous crop)
+    if (Math.random() > 0.55) addCocoaPlant(p[0] + 2.7, p[1] - 2.5);
+  });
+  // Flower beds along park
+  addFlowerBed(-5, -5); addFlowerBed(5, 5);
+  addFlowerBed(-5, 5); addFlowerBed(5, -5);
+  addFlowerBed(0, -8); addFlowerBed(0, 8);
+  addFlowerBed(-8, 0); addFlowerBed(8, 0);
+
+  // ---------- Park benches ----------
+  function addBench(x, z, rotY) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = rotY || 0;
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.45), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
+    seat.position.y = 0.45; seat.castShadow = true;
+    g.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 0.08), new THREE.MeshLambertMaterial({ color: 0x6b4423 }));
+    back.position.set(0, 0.7, -0.18);
+    g.add(back);
+    [-0.7, 0.7].forEach(dx => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 0.45), new THREE.MeshLambertMaterial({ color: 0x444441 }));
+      leg.position.set(dx, 0.22, 0);
+      g.add(leg);
+    });
+    tag(seat, 'community', 'Park bench', 'Shaded seating in cool spots — encourages people to spend time outdoors safely during heatwaves.');
+    scene.add(g);
+  }
+  addBench(-2.8, 5.5, 0);
+  addBench(2.8, 5.5, 0);
+  addBench(-2.8, -5.5, Math.PI);
+  addBench(2.8, -5.5, Math.PI);
+  addBench(5.5, -2.8, Math.PI/2);
+  addBench(5.5, 2.8, Math.PI/2);
+
+  // ---------- Playground ----------
+  function addPlayground(x, z) {
+    const g = new THREE.Group(); g.position.set(x, 0, z);
+    // Sand pad
+    const pad = new THREE.Mesh(new THREE.CircleGeometry(2.2, 24), new THREE.MeshLambertMaterial({ color: 0xfae8c4 }));
+    pad.rotation.x = -Math.PI/2; pad.position.y = 0.015;
+    tag(pad, 'community', 'Playground', 'Soft surface playground in a shaded corner of the park. Kids stay active without overheating.');
+    g.add(pad);
+    // Slide
+    const ladder = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.1), new THREE.MeshLambertMaterial({ color: 0xd85a30 }));
+    ladder.position.set(-0.5, 0.6, 0);
+    g.add(ladder);
+    const slide = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 1.5), new THREE.MeshLambertMaterial({ color: 0x4aa3df }));
+    slide.position.set(0.3, 0.5, 0); slide.rotation.x = -Math.PI / 6;
+    g.add(slide);
+    // Swing set
+    const swingPole1 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.5, 6), new THREE.MeshLambertMaterial({ color: 0x444441 }));
+    swingPole1.position.set(1.4, 0.75, -0.6); g.add(swingPole1);
+    const swingPole2 = swingPole1.clone(); swingPole2.position.set(1.4, 0.75, 0.6); g.add(swingPole2);
+    const swingTop = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.4, 6), new THREE.MeshLambertMaterial({ color: 0x444441 }));
+    swingTop.rotation.x = Math.PI/2; swingTop.position.set(1.4, 1.5, 0); g.add(swingTop);
+    [-0.4, 0.4].forEach(zo => {
+      const swing = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.06, 0.18), new THREE.MeshLambertMaterial({ color: 0x534ab7 }));
+      swing.position.set(1.4, 0.7, zo); g.add(swing);
+    });
+    scene.add(g);
+  }
+  addPlayground(-12, 0);
+
+  // ---------- Hydration stations ----------
+  function addHydration(x, z) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 1.1, 10), new THREE.MeshLambertMaterial({ color: 0x4aa3df }));
+    post.position.set(x, 0.55, z); post.castShadow = true; scene.add(post);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8), new THREE.MeshLambertMaterial({ color: 0x85b7eb }));
+    head.position.set(x, 1.2, z); head.castShadow = true;
+    tag(head, 'hydration', 'Hydration station', 'Free filtered drinking water with a low bowl for dogs. In São Tomé\'s 30°C humidity, dehydration sneaks up fast — public water keeps everyone safe.');
+    scene.add(head);
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.25, 0.1, 12), new THREE.MeshLambertMaterial({ color: 0xb5d4f4 }));
+    bowl.position.set(x + 0.5, 0.05, z);
+    tag(bowl, 'hydration', 'Pet water bowl', 'A low water bowl for dogs and other animals.');
+    scene.add(bowl);
+  }
+  addHydration(-3, -3); addHydration(3, 3); addHydration(-3, 3); addHydration(3, -3);
+  addHydration(-22, 22); addHydration(22, -22); addHydration(22, 22); addHydration(-22, -22);
+
+  // ---------- Bus stops with shaded canopy ----------
+  function addBusStop(x, z) {
+    const g = new THREE.Group(); g.position.set(x, 0, z);
+    const pole1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.5, 6), new THREE.MeshLambertMaterial({ color: 0x666666 }));
+    pole1.position.set(-1.1, 1.25, 0); g.add(pole1);
+    const pole2 = pole1.clone(); pole2.position.set(1.1, 1.25, 0); g.add(pole2);
+    const shade = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.1, 1.4), new THREE.MeshLambertMaterial({ color: 0xf5f5f5 }));
+    shade.position.set(0, 2.55, 0); shade.castShadow = true;
+    tag(shade, 'transit', 'Shaded transit stop with solar roof', 'White solar canopies provide shade for the bus and shared-motorbike (motoqueiros) stop. Solar panels power the schedule signs.');
+    g.add(shade);
+    // Solar grid pattern
+    const grid = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshLambertMaterial({ color: 0x185fa5 }));
+    grid.rotation.x = -Math.PI/2; grid.position.set(0, 2.61, 0);
+    g.add(grid);
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.4), new THREE.MeshLambertMaterial({ color: 0xcecbf6 }));
+    bench.position.set(0, 0.5, 0.3); g.add(bench);
+    // Sign
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.05), new THREE.MeshLambertMaterial({ color: 0xfac775 }));
+    sign.position.set(-1.1, 2.0, 0); g.add(sign);
+    scene.add(g);
+  }
+  addBusStop(11, -2.5); addBusStop(-11, 2.5);
+  addBusStop(2.5, 11); addBusStop(-2.5, -11);
+
+  // ---------- Misting arches over bike lanes ----------
+  function addMistArch(x, z, rotated) {
+    const arch = new THREE.Mesh(
+      new THREE.TorusGeometry(1.4, 0.07, 8, 16, Math.PI),
+      new THREE.MeshLambertMaterial({ color: 0xb4b2a9 })
+    );
+    arch.position.set(x, 1.5, z);
+    if (rotated) arch.rotation.y = Math.PI / 2;
+    tag(arch, 'mist', 'Misting arch', 'Cool mist sprays over bike riders on hot days — like a sprinkler tunnel for commuters.');
+    scene.add(arch);
+  }
+  addMistArch(-22, 14, true); addMistArch(22, -14, true); addMistArch(14, 22, false); addMistArch(-14, -22, false);
+
+  // ---------- Solar streetlights ----------
+  function addStreetlight(x, z) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3, 6), new THREE.MeshLambertMaterial({ color: 0x444444 }));
+    post.position.set(x, 1.5, z); scene.add(post);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: 0xfaeeda, emissive: 0xfac775, emissiveIntensity: 0.25 }));
+    lamp.position.set(x, 3.1, z); scene.add(lamp);
+    // Solar panel on top
+    const sp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.3), new THREE.MeshLambertMaterial({ color: 0x185fa5 }));
+    sp.position.set(x, 3.3, z); scene.add(sp);
+  }
+  for (let i = -20; i <= 20; i += 10) {
+    addStreetlight(i, -3.5); addStreetlight(i, 3.5);
+    addStreetlight(-3.5, i); addStreetlight(3.5, i);
+  }
+
+  // ---------- Parked electric cars (a few small EVs) ----------
+  function addCar(x, z, rotY, color) {
+    const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = rotY || 0;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.0), new THREE.MeshLambertMaterial({ color: color || 0xf09595 }));
+    body.position.y = 0.45; body.castShadow = true; g.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.4, 0.9), new THREE.MeshLambertMaterial({ color: color || 0xf09595 }));
+    cab.position.y = 0.85; cab.castShadow = true; g.add(cab);
+    // Windshield (dark)
+    const win = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.3, 0.85), new THREE.MeshLambertMaterial({ color: 0x2a3a4a }));
+    win.position.y = 0.95; g.add(win);
+    // Wheels
+    [[-0.7, -0.5], [0.7, -0.5], [-0.7, 0.5], [0.7, 0.5]].forEach(([dx, dz]) => {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.18, 12), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+      wheel.rotation.z = Math.PI/2; wheel.position.set(dx, 0.22, dz); g.add(wheel);
+    });
+    // Charging cable plug visible
+    const plug = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 6), new THREE.MeshLambertMaterial({ color: 0x1d9e75 }));
+    plug.rotation.z = Math.PI/2; plug.position.set(-1.1, 0.5, 0); g.add(plug);
+    tag(body, 'transit', 'Shared electric vehicle', 'A small fleet of shared EVs is plenty for an island the size of São Tomé. Solar-charged batteries, no tailpipe = no extra heat or smog.');
+    scene.add(g);
+  }
+  addCar(13, -19.5, 0, 0xb5d4f4);
+  addCar(-13, 19.5, Math.PI, 0xfac775);
+  addCar(19.5, 13, Math.PI/2, 0xc0dd97);
+
+  // ---------- Tiny people walking ----------
+  const people = [];
+  function addPerson(x, z, color) {
+    const g = new THREE.Group(); g.position.set(x, 0, z);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.7, 8), new THREE.MeshLambertMaterial({ color: color || 0xcecbf6 }));
+    body.position.y = 0.45; g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), new THREE.MeshLambertMaterial({ color: 0xefdbb2 }));
+    head.position.y = 1.0; g.add(head);
+    scene.add(g);
+    people.push({ group: g, baseX: x, baseZ: z, phase: Math.random() * Math.PI * 2, axis: Math.random() > 0.5 ? 'x' : 'z' });
+  }
+  // Sprinkle people in the park & near bus stops
+  addPerson(-1.5, 6, 0xf09595);
+  addPerson(1.5, -6, 0x534ab7);
+  addPerson(7, -3, 0xfac775);
+  addPerson(-7, 3, 0x97c459);
+  addPerson(11.5, -2.5, 0xb5d4f4);  // at bus stop
+  addPerson(-11.5, 2.5, 0xd85a30);  // at bus stop
+  addPerson(0, -4.5, 0x4aa3df);
+
+  // ---------- Pico Cão Grande (iconic volcanic plug on the horizon) ----------
+  // Tall narrow basalt cone, far behind the houses to the north
+  function addPicoCaoGrande() {
+    const g = new THREE.Group();
+    g.position.set(-25, 0, -85);
+
+    // Base hill (broad)
+    const base = new THREE.Mesh(
+      new THREE.ConeGeometry(15, 12, 12),
+      new THREE.MeshLambertMaterial({ color: 0x4a6741 })
+    );
+    base.position.y = 6;
+    g.add(base);
+
+    // Iconic narrow plug (tall, thin, dark basalt)
+    const plug = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.2, 3.2, 22, 10),
+      new THREE.MeshLambertMaterial({ color: 0x3a3a3e })
+    );
+    plug.position.y = 18;
+    tag(plug, 'landmark', 'Pico Cão Grande', 'São Tomé\'s iconic 663m volcanic plug, formed when magma hardened inside an ancient volcano. The softer rock around it eroded away.');
+    g.add(plug);
+
+    // Pointed cap
+    const cap = new THREE.Mesh(
+      new THREE.ConeGeometry(2.2, 4, 10),
+      new THREE.MeshLambertMaterial({ color: 0x2c2c2e })
+    );
+    cap.position.y = 31;
+    g.add(cap);
+
+    // Green foliage hugging the base
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const tuft = new THREE.Mesh(
+        new THREE.SphereGeometry(2.5, 8, 6),
+        new THREE.MeshLambertMaterial({ color: 0x2c5b1f })
+      );
+      tuft.position.set(Math.cos(a) * 12, 5 + Math.random() * 2, Math.sin(a) * 12);
+      tuft.scale.y = 0.7;
+      g.add(tuft);
+    }
+
+    scene.add(g);
+  }
+  addPicoCaoGrande();
+
+  // A second, smaller distant peak (Pico Pequeno)
+  function addPicoPequeno() {
+    const peak = new THREE.Mesh(
+      new THREE.ConeGeometry(8, 18, 10),
+      new THREE.MeshLambertMaterial({ color: 0x4f5e4a })
+    );
+    peak.position.set(35, 9, -75);
+    tag(peak, 'landmark', 'Smaller volcanic peak', 'São Tomé is a chain of volcanic mountains rising straight out of the Atlantic. Lush rainforest covers their slopes.');
+    scene.add(peak);
+  }
+  addPicoPequeno();
+
+  // Push fog further out so distant peaks don't disappear
+  scene.fog.near = 130;
+  scene.fog.far = 280;
+
+  // ---------- Power poles & overhead cables ----------
+  const powerPolePositions = [
+    [-22, -22], [-22, 0], [-22, 22],
+    [0, -22], [0, 22],
+    [22, -22], [22, 0], [22, 22]
+  ];
+  const polesByPosition = new Map();
+  function addPowerPole(x, z) {
+    const g = new THREE.Group(); g.position.set(x, 0, z);
+    // Wooden pole
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.13, 0.18, 7, 8),
+      new THREE.MeshLambertMaterial({ color: 0x6e4d2e })
+    );
+    pole.position.y = 3.5; pole.castShadow = true;
+    g.add(pole);
+    // Cross-arm (the horizontal piece holding the wires)
+    const arm = new THREE.Mesh(
+      new THREE.BoxGeometry(2.0, 0.12, 0.12),
+      new THREE.MeshLambertMaterial({ color: 0x6e4d2e })
+    );
+    arm.position.y = 6.5; g.add(arm);
+    // Insulator caps
+    [-0.85, 0, 0.85].forEach(dx => {
+      const ins = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.09, 0.18, 6),
+        new THREE.MeshLambertMaterial({ color: 0xeae6da })
+      );
+      ins.position.set(dx, 6.65, 0); g.add(ins);
+    });
+    tag(pole, 'transit', 'Solar-grid utility pole', 'Wooden poles carry low-voltage cables connecting solar-equipped homes to a community microgrid.');
+    scene.add(g);
+    polesByPosition.set(x + ',' + z, { x, y: 6.65, z });
+  }
+  powerPolePositions.forEach(p => addPowerPole(p[0], p[1]));
+
+  // Cables between adjacent poles (3 lines per span — top, middle, bottom)
+  function addCable(p1, p2, dropAmount) {
+    // Use a CurveLine made from a quadratic Bezier with sag
+    const start = new THREE.Vector3(p1.x, p1.y, p1.z);
+    const end = new THREE.Vector3(p2.x, p2.y, p2.z);
+    const mid = start.clone().add(end).multiplyScalar(0.5);
+    mid.y -= dropAmount;
+    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    const points = curve.getPoints(20);
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: 0x222222 });
+    const line = new THREE.Line(geo, mat);
+    scene.add(line);
+  }
+  // Connect adjacent poles in a grid
+  const poleGrid = new Map();
+  powerPolePositions.forEach(([x, z]) => poleGrid.set(x + ',' + z, { x, y: 6.65, z }));
+  function tryConnect(a, b, off) {
+    const pa = poleGrid.get(a[0] + ',' + a[1]);
+    const pb = poleGrid.get(b[0] + ',' + b[1]);
+    if (pa && pb) {
+      // Offset slightly along the cross-arm for the 3 cable rows
+      const dx = pb.x - pa.x, dz = pb.z - pa.z;
+      const len = Math.hypot(dx, dz);
+      const perpX = -dz / len, perpZ = dx / len;
+      [-0.85, 0, 0.85].forEach(o => {
+        const offA = { x: pa.x + perpX * o, y: pa.y, z: pa.z + perpZ * o };
+        const offB = { x: pb.x + perpX * o, y: pb.y, z: pb.z + perpZ * o };
+        addCable(offA, offB, 0.5 + Math.random() * 0.2);
+      });
+    }
+  }
+  // Horizontal connections
+  tryConnect([-22, -22], [0, -22]); tryConnect([0, -22], [22, -22]);
+  tryConnect([-22, 22], [0, 22]); tryConnect([0, 22], [22, 22]);
+  // Vertical connections
+  tryConnect([-22, -22], [-22, 0]); tryConnect([-22, 0], [-22, 22]);
+  tryConnect([22, -22], [22, 0]); tryConnect([22, 0], [22, 22]);
+  // Cross connections through center
+  tryConnect([0, -22], [0, 22]);
+  tryConnect([-22, 0], [22, 0]);
+
+  // ---------- Laundry lines (between some buildings) ----------
+  function addLaundryLine(x1, z1, x2, z2) {
+    // Two small posts + a sagging line + hanging clothes
+    const startPost = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6),
+      new THREE.MeshLambertMaterial({ color: 0x6b4423 })
+    );
+    startPost.position.set(x1, 1.2, z1); scene.add(startPost);
+    const endPost = startPost.clone();
+    endPost.position.set(x2, 1.2, z2); scene.add(endPost);
+    // Line itself (slightly drooping)
+    const start = new THREE.Vector3(x1, 2.2, z1);
+    const end = new THREE.Vector3(x2, 2.2, z2);
+    const mid = start.clone().add(end).multiplyScalar(0.5); mid.y -= 0.18;
+    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    const points = curve.getPoints(12);
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xffffff }));
+    scene.add(line);
+    // Hanging clothes along the line
+    const clothColors = [0xe24b4a, 0x378add, 0xfac775, 0x97c459, 0xffffff, 0xc94d8b, 0xfff5d0];
+    const cloths = 6;
+    for (let i = 1; i <= cloths; i++) {
+      const t = i / (cloths + 1);
+      const point = curve.getPoint(t);
+      const cloth = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.45 + Math.random() * 0.2, 0.6 + Math.random() * 0.25),
+        new THREE.MeshLambertMaterial({ color: clothColors[Math.floor(Math.random() * clothColors.length)], side: THREE.DoubleSide })
+      );
+      cloth.position.set(point.x, point.y - 0.4, point.z);
+      cloth.rotation.y = Math.atan2(end.x - start.x, end.z - start.z) + Math.PI / 2;
+      tag(cloth, 'plant', 'Drying laundry', 'Air-drying clothes saves AC energy and uses solar heat directly.');
+      scene.add(cloth);
+    }
+  }
+  addLaundryLine(11, 17, 17, 17);
+  addLaundryLine(-11, 17, -17, 17);
+  addLaundryLine(11, -11, 17, -11);
+
+  // ---------- Dense undergrowth: lots more shrubs & grass tufts ----------
+  function addGrassTuft(x, z) {
+    const tuft = new THREE.Group();
+    const blades = 5 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < blades; i++) {
+      const blade = new THREE.Mesh(
+        new THREE.ConeGeometry(0.04, 0.3 + Math.random() * 0.2, 4),
+        new THREE.MeshLambertMaterial({ color: 0x639922 })
+      );
+      blade.position.set(
+        (Math.random() - 0.5) * 0.3,
+        0.15 + Math.random() * 0.05,
+        (Math.random() - 0.5) * 0.3
+      );
+      blade.rotation.z = (Math.random() - 0.5) * 0.3;
+      blade.rotation.x = (Math.random() - 0.5) * 0.3;
+      tuft.add(blade);
+    }
+    tuft.position.set(x, 0, z);
+    scene.add(tuft);
+  }
+  // Sprinkle grass tufts in non-pavement areas
+  for (let i = 0; i < 80; i++) {
+    const x = (Math.random() - 0.5) * 60;
+    const z = (Math.random() - 0.5) * 60;
+    // Keep off streets (within ±3 of x=0 or z=0)
+    if (Math.abs(x) < 3.5 || Math.abs(z) < 3.5) continue;
+    if (Math.abs(x) > 17 && Math.abs(x) < 23) continue;
+    if (Math.abs(z) > 17 && Math.abs(z) < 23) continue;
+    // Keep out of pond
+    if (Math.hypot(x, z) < 5) continue;
+    addGrassTuft(x, z);
+  }
+
+  // ---------- Birds (V-shapes flapping) ----------
+  const birds = [];
+  function addBird(x, y, z) {
+    const g = new THREE.Group(); g.position.set(x, y, z);
+    const wingMat = new THREE.MeshLambertMaterial({ color: 0x222222, side: THREE.DoubleSide });
+    // Two wing planes forming a flat V
+    const left = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.18), wingMat);
+    left.position.set(-0.3, 0, 0); left.rotation.z = 0.4;
+    const right = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.18), wingMat);
+    right.position.set(0.3, 0, 0); right.rotation.z = -0.4;
+    g.add(left); g.add(right);
+    g.userData = {
+      orbit: 25 + Math.random() * 30,
+      angle: Math.random() * Math.PI * 2,
+      speed: 0.04 + Math.random() * 0.04,
+      yBase: y,
+      flapPhase: Math.random() * Math.PI * 2,
+      left, right
+    };
+    scene.add(g);
+    birds.push(g);
+  }
+  // Several birds circling above the neighborhood
+  for (let i = 0; i < 7; i++) {
+    addBird(
+      (Math.random() - 0.5) * 50,
+      18 + Math.random() * 8,
+      (Math.random() - 0.5) * 50
+    );
+  }
+
+  // ---------- Click & hover info ----------
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  const infoCard = document.getElementById('info');
+  const infoIcon = document.getElementById('info-icon');
+  const infoTitle = document.getElementById('info-title');
+  const infoDesc = document.getElementById('info-desc');
+  let infoTimer;
+  function showInfo(ud) {
+    infoIcon.textContent = ud.type;
+    infoTitle.textContent = ud.name;
+    infoDesc.textContent = ud.desc;
+    infoCard.classList.add('show');
+    clearTimeout(infoTimer);
+    infoTimer = setTimeout(() => infoCard.classList.remove('show'), 5500);
+  }
+  function pick(ev) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObjects(scene.children, true);
+    for (const h of hits) {
+      let o = h.object;
+      while (o) {
+        if (o.userData && o.userData.name) { showInfo(o.userData); return; }
+        o = o.parent;
+      }
+    }
+  }
+
+  // ---------- First-person walk mode ----------
+  let walkMode = false;
+  const walkPos = new THREE.Vector3(0, 1.65, 32); // start near beach, eye height
+  let walkYaw = Math.PI; // facing -Z (toward houses)
+  let walkPitch = -0.05;
+  const keys = {};
+  const baseSpeed = 6.5;   // m/s walking
+  const runSpeed = 13.0;   // m/s running
+
+  // House AABB list for collision (housePositions filled below)
+  const housePositions = [
+    [8, -8], [8, -14], [14, -8], [14, -14],
+    [-8, -8], [-8, -14], [-14, -14],
+    [-8, 8], [-8, 14], [-14, 8], [-14, 14],
+    [8, 8], [14, 8], [14, 14],
+    [-14, -8], [8, 14], [-8, -22]
+  ];
+  const collisionRadius = 4.0; // half-extent + walking buffer
+
+  function clampWalkPos(pos) {
+    // World bounds (don't fall off the edges)
+    pos.x = Math.max(-72, Math.min(72, pos.x));
+    pos.z = Math.max(-72, Math.min(48, pos.z)); // stop at the beach
+    pos.y = 1.65;
+    // Push out of houses
+    for (const [hx, hz] of housePositions) {
+      const dx = pos.x - hx;
+      const dz = pos.z - hz;
+      if (Math.abs(dx) < collisionRadius && Math.abs(dz) < collisionRadius) {
+        // Push out along the smaller penetration axis
+        const px = collisionRadius - Math.abs(dx);
+        const pz = collisionRadius - Math.abs(dz);
+        if (px < pz) pos.x = hx + Math.sign(dx || 1) * collisionRadius;
+        else pos.z = hz + Math.sign(dz || 1) * collisionRadius;
+      }
+    }
+    // Push out of pond (radius 4 around origin)
+    const dr = Math.hypot(pos.x, pos.z);
+    if (dr < 4.5) {
+      const ang = Math.atan2(pos.z, pos.x);
+      pos.x = Math.cos(ang) * 4.5;
+      pos.z = Math.sin(ang) * 4.5;
+    }
+  }
+
+  function setWalkMode(on) {
+    walkMode = on;
+    document.getElementById('hint-walk').style.display = on ? 'block' : 'none';
+    document.getElementById('hint-orbit').style.display = on ? 'none' : 'block';
+    document.getElementById('crosshair').style.display = on ? 'block' : 'none';
+    btnWalk.classList.toggle('active', on);
+    btnWalk.textContent = on ? 'Exit walk mode' : 'Walk around (first-person)';
+    if (on) {
+      // Snap camera to a nice starting spot at street height
+      walkPos.set(2, 1.65, 28);
+      walkYaw = Math.PI; walkPitch = -0.02;
+      camera.fov = 70;  // wider FOV for first-person feel
+      camera.updateProjectionMatrix();
+      // Try to enter pointer lock
+      if (canvas.requestPointerLock) canvas.requestPointerLock();
+    } else {
+      camera.fov = 45;
+      camera.updateProjectionMatrix();
+      if (document.exitPointerLock && document.pointerLockElement) document.exitPointerLock();
+      applyCamera();
+    }
+  }
+
+  // Pointer lock change (esc exits)
+  document.addEventListener('pointerlockchange', () => {
+    if (walkMode && !document.pointerLockElement) {
+      // User pressed Esc — exit walk mode automatically after a moment
+      // (giving them the option to click back in)
+    }
+  });
+
+  // Mouse-look (only when pointer is locked)
+  document.addEventListener('mousemove', (e) => {
+    if (!walkMode || document.pointerLockElement !== canvas) return;
+    walkYaw -= e.movementX * 0.0022;
+    walkPitch -= e.movementY * 0.0022;
+    walkPitch = Math.max(-Math.PI/2 + 0.05, Math.min(Math.PI/2 - 0.05, walkPitch));
+  });
+
+  // Keyboard
+  document.addEventListener('keydown', (e) => {
+    if (!walkMode) return;
+    keys[e.code] = true;
+    if (['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','ShiftLeft','ShiftRight'].includes(e.code)) {
+      e.preventDefault();
+    }
+    if (e.code === 'KeyE') {
+      // Pick whatever is at the center of the screen
+      mouse.x = 0; mouse.y = 0;
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObjects(scene.children, true);
+      for (const h of hits) {
+        let o = h.object;
+        while (o) {
+          if (o.userData && o.userData.name) { showInfo(o.userData); return; }
+          o = o.parent;
+        }
+      }
+    }
+  });
+  document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+  // Click on canvas in walk mode → re-acquire pointer lock
+  // ---------- Mouse / touch controls (orbit mode) ----------
+  let dragging = false, dragMoved = false, lastX = 0, lastY = 0;
+  renderer.domElement.addEventListener('mousedown', (e) => {
+    if (walkMode) return;
+    dragging = true; dragMoved = false; lastX = e.clientX; lastY = e.clientY;
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (walkMode || !dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true;
+    camState.angleH -= dx * 0.008;
+    camState.angleV = Math.max(0.15, Math.min(Math.PI / 2 - 0.05, camState.angleV - dy * 0.008));
+    lastX = e.clientX; lastY = e.clientY;
+    applyCamera();
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  renderer.domElement.addEventListener('click', (e) => {
+    if (walkMode) {
+      // Re-engage pointer lock if it was lost
+      if (document.pointerLockElement !== canvas && canvas.requestPointerLock) canvas.requestPointerLock();
+      return;
+    }
+    if (!dragMoved) pick(e);
+  });
+  renderer.domElement.addEventListener('wheel', (e) => {
+    if (walkMode) return;
+    e.preventDefault();
+    camState.dist = Math.max(20, Math.min(140, camState.dist + e.deltaY * 0.05));
+    applyCamera();
+  }, { passive: false });
+
+  let touch1 = null, touch2 = null;
+  renderer.domElement.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    if (e.touches.length === 2) touch2 = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  }, { passive: true });
+  renderer.domElement.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 1 && touch1) {
+      const dx = e.touches[0].clientX - touch1.x, dy = e.touches[0].clientY - touch1.y;
+      camState.angleH -= dx * 0.008;
+      camState.angleV = Math.max(0.15, Math.min(Math.PI / 2 - 0.05, camState.angleV - dy * 0.008));
+      touch1 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      applyCamera();
+    }
+    if (e.touches.length === 2 && touch2) {
+      const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      camState.dist = Math.max(20, Math.min(140, camState.dist - (d - touch2) * 0.2));
+      touch2 = d;
+      applyCamera();
+    }
+  }, { passive: true });
+  renderer.domElement.addEventListener('touchend', () => { touch1 = null; touch2 = null; });
+
+  // ---------- Heat overlay ----------
+  let heatMode = false;
+  function setHeatMode(on) {
+    heatMode = on;
+    scene.background = on ? skyHot : skyCool;
+    if (scene.fog) scene.fog.color = on ? skyHot : skyCool;
+    scene.traverse((obj) => {
+      if (!obj.material || !obj.material.color) return;
+      if (!colorMemory.has(obj)) return;
+      const original = colorMemory.get(obj);
+      if (!on) { obj.material.color.setHex(original); return; }
+      const ud = obj.userData || {};
+      if (['tree', 'water', 'hydration', 'bike', 'mist', 'plant'].includes(ud.type)) {
+        obj.material.color.setHex(0x1d9e75);
+      } else if (['cooling', 'transit'].includes(ud.type)) {
+        obj.material.color.setHex(0x378add);
+      } else {
+        const r = (original >> 16) & 0xff, g = (original >> 8) & 0xff, b = original & 0xff;
+        const brightness = (r + g + b) / (3 * 255);
+        if (brightness > 0.85) obj.material.color.setHex(0xfac775);
+        else if (brightness > 0.55) obj.material.color.setHex(0xef9f27);
+        else obj.material.color.setHex(0xd85a30);
+      }
+    });
+  }
+
+  // ---------- UI ----------
+  const btnCool = document.getElementById('btn-cool');
+  const btnHeat = document.getElementById('btn-heat');
+  const btnRotate = document.getElementById('btn-rotate');
+  const btnReset = document.getElementById('btn-reset');
+  const btnWalk = document.getElementById('btn-walk');
+  btnCool.addEventListener('click', () => { setHeatMode(false); btnCool.classList.add('active'); btnHeat.classList.remove('active'); });
+  btnHeat.addEventListener('click', () => { setHeatMode(true); btnHeat.classList.add('active'); btnCool.classList.remove('active'); });
+  let autoRotate = false;
+  btnRotate.addEventListener('click', () => { autoRotate = !autoRotate; btnRotate.classList.toggle('active', autoRotate); });
+  btnReset.addEventListener('click', () => {
+    if (walkMode) setWalkMode(false);
+    camState.dist = 75; camState.angleH = Math.PI / 4; camState.angleV = Math.PI / 3.5;
+    camState.target.set(0, 0, 0);
+    applyCamera();
+  });
+  btnWalk.addEventListener('click', () => { setWalkMode(!walkMode); });
+
+  window.addEventListener('resize', () => {
+    camera.aspect = stage.clientWidth / stage.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(stage.clientWidth, stage.clientHeight);
+  });
+
+  // ---------- Animation ----------
+  let t = 0;
+  const clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+    t += dt;
+    // (ocean is now a static plane — no shader update needed)
+    // Tree gentle sway (palm fronds use group scale)
+    trees.forEach((tr, i) => {
+      if (tr.group && tr.group.rotation) {
+        tr.group.rotation.x = Math.sin(t * 0.7 + i * 0.4) * 0.012;
+        tr.group.rotation.z = Math.cos(t * 0.6 + i * 0.5) * 0.012;
+      }
+      if (tr.group && tr.group.scale) tr.group.scale.y = tr.base * (1 + Math.sin(t + i * 0.3) * 0.012);
+    });
+    // Fountain pulse
+    fountainSpray.scale.y = 1 + Math.sin(t * 3) * 0.12;
+    // Foam pulsing on the shoreline
+    foamStrips.forEach((f, i) => {
+      f.material.opacity = 0.35 + 0.3 * (0.5 + 0.5 * Math.sin(t * 1.4 + (f.userData.phase || 0)));
+      f.position.z = 50.5 + Math.sin(t * 0.9 + i * 0.7) * 0.4;
+    });
+    // Clouds drift slowly
+    clouds.forEach((c) => {
+      c.position.x += c.userData.drift * dt * 60;
+      if (c.position.x > c.userData.range) c.position.x = -c.userData.range;
+    });
+    // Birds: circle around the scene with flapping wings
+    birds.forEach((b) => {
+      b.userData.angle += b.userData.speed * dt * 2;
+      b.position.x = Math.cos(b.userData.angle) * b.userData.orbit;
+      b.position.z = Math.sin(b.userData.angle) * b.userData.orbit;
+      b.position.y = b.userData.yBase + Math.sin(t * 0.4 + b.userData.flapPhase) * 0.6;
+      // Face the direction of travel
+      b.rotation.y = -b.userData.angle - Math.PI / 2;
+      // Flap wings
+      const flap = Math.sin(t * 8 + b.userData.flapPhase) * 0.6;
+      b.userData.left.rotation.z = 0.4 + flap;
+      b.userData.right.rotation.z = -0.4 - flap;
+    });
+    // People walking back and forth (small range)
+    people.forEach((p, i) => {
+      const off = Math.sin(t + p.phase) * 1.5;
+      if (p.axis === 'x') p.group.position.x = p.baseX + off;
+      else p.group.position.z = p.baseZ + off;
+      p.group.position.y = Math.abs(Math.sin(t * 4 + p.phase)) * 0.05;
+    });
+    if (autoRotate && !walkMode) { camState.angleH += 0.003; applyCamera(); }
+
+    // First-person walk movement
+    if (walkMode) {
+      // Build forward/right vectors from yaw (ignore pitch for ground movement)
+      const fwdX = -Math.sin(walkYaw), fwdZ = -Math.cos(walkYaw);
+      const rightX = -fwdZ, rightZ = fwdX;
+      const speed = (keys.ShiftLeft || keys.ShiftRight) ? runSpeed : baseSpeed;
+      let mx = 0, mz = 0;
+      if (keys.KeyW || keys.ArrowUp)    { mx += fwdX;   mz += fwdZ; }
+      if (keys.KeyS || keys.ArrowDown)  { mx -= fwdX;   mz -= fwdZ; }
+      if (keys.KeyA || keys.ArrowLeft)  { mx -= rightX; mz -= rightZ; }
+      if (keys.KeyD || keys.ArrowRight) { mx += rightX; mz += rightZ; }
+      const mlen = Math.hypot(mx, mz);
+      if (mlen > 0) {
+        const k = (speed * dt) / mlen;
+        walkPos.x += mx * k;
+        walkPos.z += mz * k;
+      }
+      clampWalkPos(walkPos);
+      // Set camera position and orientation
+      camera.position.copy(walkPos);
+      camera.rotation.order = 'YXZ';
+      camera.rotation.set(walkPitch, walkYaw, 0);
+      // Tiny head bob when moving
+      if (mlen > 0) {
+        camera.position.y += Math.sin(t * 9) * 0.04;
+      }
+    }
+    renderer.render(scene, camera);
+  }
+  animate();
+  setStatus('Scene running · ' + scene.children.length + ' objects');
+  setTimeout(() => { const s = document.getElementById('status'); if (s) s.style.display = 'none'; }, 3000);
+  } catch(e) {
+    showError('Setup error: ' + e.message + '\n' + (e.stack || ''));
+  }
+})();
+</script>
+</body>
+</html>
