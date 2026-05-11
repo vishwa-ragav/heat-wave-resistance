@@ -1244,26 +1244,171 @@ try {
   leafTipBead.position.set(0, 11.5, 0);
   scene.add(leafTipBead);
 
-  // Subtle leaf veins (slightly darker copper lines along the surface)
+  // Subtle leaf veins — main side veins + branching sub-veins
   const veinMat = new THREE.LineBasicMaterial({ color: copperOxidized, linewidth: 2 });
-  const makeVein = (x1, y1, x2, y2) => {
+  const veinFineMat = new THREE.LineBasicMaterial({ color: 0x8a4f25, linewidth: 1, transparent: true, opacity: 0.75 });
+  const makeVein = (x1, y1, x2, y2, mat) => {
     const points = [new THREE.Vector3(x1, y1, 0.10), new THREE.Vector3(x2, y2, 0.10)];
     const veinGeo = new THREE.BufferGeometry().setFromPoints(points);
-    const v = new THREE.Line(veinGeo, veinMat);
+    const v = new THREE.Line(veinGeo, mat || veinMat);
     v.rotation.copy(copperLeaf.rotation);
     v.position.copy(copperLeaf.position);
     scene.add(v);
   };
-  // Central vein
+  // Central vein (mid-rib)
   makeVein(0, 0.2, 0, 6.3);
-  // Side veins
+  // Side veins with branching sub-veins and marginal veins
   for (let i = 1; i <= 4; i++) {
     const ratio = i / 5;
     const yPos = 1.0 + ratio * 4.5;
     const xWidth = (1 - Math.pow(ratio - 0.3, 2)) * 1.8;
     makeVein(0, yPos, xWidth, yPos + 0.4);
     makeVein(0, yPos, -xWidth, yPos + 0.4);
+    // Sub-veins branching off (finer lines)
+    [0.35, 0.65].forEach(t => {
+      const midX = xWidth * t, midY = yPos + 0.4 * t;
+      const tipX = midX + xWidth * 0.20, tipY = midY + 0.22;
+      makeVein(midX, midY, tipX, tipY, veinFineMat);
+      makeVein(-midX, midY, -tipX, tipY, veinFineMat);
+    });
+    // Short marginal veins along the leaf rim (only on middle rows)
+    if (i === 2 || i === 3) {
+      makeVein(xWidth, yPos + 0.4, xWidth + 0.25, yPos + 0.95, veinFineMat);
+      makeVein(-xWidth, yPos + 0.4, -(xWidth + 0.25), yPos + 0.95, veinFineMat);
+    }
   }
+
+  // ---------- Additional copper-leaf detail ----------
+  // Compound-leaf elements: 4 smaller leaflets sprouting from the stalk,
+  // patina patches, water droplets, pedestal ornamentation, and an inscription plaque.
+
+  // Reusable leaflet builder (shares the main leaf's Bezier shape)
+  function makeCopperLeafletShape() {
+    const s = new THREE.Shape();
+    s.moveTo(0, 0);
+    s.bezierCurveTo(2.0, 0.4, 2.5, 4.0, 0.4, 6.0);
+    s.bezierCurveTo(0.2, 6.4, 0, 6.5, 0, 6.5);
+    s.bezierCurveTo(0, 6.5, -0.2, 6.4, -0.4, 6.0);
+    s.bezierCurveTo(-2.5, 4.0, -2.0, 0.4, 0, 0);
+    return s;
+  }
+  function addSmallLeaflet(stalkY, azimuth, size, tilt, droop) {
+    const geo = new THREE.ExtrudeGeometry(makeCopperLeafletShape(), {
+      depth: 0.14,
+      bevelEnabled: true,
+      bevelThickness: 0.045,
+      bevelSize: 0.035,
+      bevelSegments: 3,
+      curveSegments: 14
+    });
+    geo.translate(0, 0, -0.07);
+    geo.scale(size, size, size);
+    const leaflet = new THREE.Mesh(geo, leafMat);
+    const offset = 0.25;
+    leaflet.position.set(Math.cos(azimuth) * offset, stalkY, Math.sin(azimuth) * offset);
+    leaflet.rotation.y = -azimuth;
+    leaflet.rotation.z = tilt;
+    leaflet.rotation.x = droop;
+    leaflet.castShadow = true;
+    scene.add(leaflet);
+  }
+  // Upper pair (smaller, angled out)
+  addSmallLeaflet(4.7, 0,           0.42,  0.55, -0.10);
+  addSmallLeaflet(4.7, Math.PI,     0.42, -0.55, -0.10);
+  // Mid pair (slightly bigger, more dramatic tilt)
+  addSmallLeaflet(3.4, Math.PI / 2, 0.50,  0.45, -0.05);
+  addSmallLeaflet(3.4, -Math.PI / 2, 0.50, -0.45, -0.05);
+
+  // Patina patches — green oxidation spots scattered on the main leaf surface
+  const patinaColors = [0x5a9a82, 0x4a8a76, 0x6daa92, 0x55a290];
+  for (let i = 0; i < 11; i++) {
+    const patch = new THREE.Mesh(
+      new THREE.CircleGeometry(0.10 + Math.random() * 0.13, 10),
+      new THREE.MeshLambertMaterial({
+        color: patinaColors[Math.floor(Math.random() * patinaColors.length)],
+        transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false
+      })
+    );
+    const localX = (Math.random() - 0.5) * 3.4;
+    const localY = 1.0 + Math.random() * 4.5;
+    const local = new THREE.Vector3(localX, localY, 0.11);
+    local.applyEuler(copperLeaf.rotation);
+    local.add(copperLeaf.position);
+    patch.position.copy(local);
+    patch.rotation.copy(copperLeaf.rotation);
+    scene.add(patch);
+  }
+
+  // Water droplets near the leaf tip & edges (mist condensation + fountain spray)
+  for (let i = 0; i < 6; i++) {
+    const drop = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06 + Math.random() * 0.03, 8, 6),
+      new THREE.MeshLambertMaterial({ color: 0x8cc8e5, transparent: true, opacity: 0.78 })
+    );
+    drop.scale.set(1, 1.8 + Math.random() * 0.5, 1);
+    const tEdge = Math.random();
+    const localY = 5.5 + tEdge * 0.9;
+    const localX = (Math.random() - 0.5) * (1.5 - tEdge * 1.0);
+    const local = new THREE.Vector3(localX, localY, 0.18);
+    local.applyEuler(copperLeaf.rotation);
+    local.add(copperLeaf.position);
+    drop.position.copy(local);
+    scene.add(drop);
+  }
+
+  // Cluster of copper "stamen" beads around the base of the main leaf
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const stamen = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 8, 6),
+      new THREE.MeshLambertMaterial({ color: copperOxidized })
+    );
+    const local = new THREE.Vector3(Math.cos(a) * 0.4, 0.3, Math.sin(a) * 0.4);
+    local.applyEuler(copperLeaf.rotation);
+    local.add(copperLeaf.position);
+    stamen.position.copy(local);
+    scene.add(stamen);
+  }
+
+  // Decorative carved rings on the stone pedestal
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.48 - i * 0.02, 0.04, 6, 28),
+      new THREE.MeshLambertMaterial({ color: 0x6e6555 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(0, 0.7 + i * 0.35, 0);
+    scene.add(ring);
+  }
+
+  // Bronze inscription plaque on the front of the stone pedestal
+  const plaque = new THREE.Mesh(
+    new THREE.BoxGeometry(0.78, 0.36, 0.06),
+    new THREE.MeshLambertMaterial({ color: 0x8a6a3a })
+  );
+  plaque.position.set(0, 1.4, 0.41);
+  plaque.castShadow = true;
+  tag(plaque, 'landmark', 'Bronze plaque', 'Inscribed: "Bairro de ervas — Built to outlast the heatwave. 38% canopy, 0.78 albedo, 25 fountains. Designed by Swathi."');
+  scene.add(plaque);
+
+  // Embossed dot-pattern lines on the plaque (suggesting engraved text)
+  const dotMat = new THREE.MeshLambertMaterial({ color: 0x5c4a26 });
+  for (let row = 0; row < 4; row++) {
+    const rowLen = 10 + Math.floor(Math.random() * 4);
+    for (let col = 0; col < rowLen; col++) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), dotMat);
+      dot.position.set(-0.30 + col * 0.058, 1.50 - row * 0.075, 0.445);
+      scene.add(dot);
+    }
+  }
+
+  // Warm spotlight pointing up at the statue (additional theatrical lighting)
+  const statueSpot = new THREE.SpotLight(0xfff5d0, 0.85, 25, Math.PI / 5, 0.4, 1.5);
+  statueSpot.position.set(0, 0.6, 3);
+  statueSpot.target.position.set(0, 6, 0);
+  statueSpot.castShadow = false;
+  scene.add(statueSpot);
+  scene.add(statueSpot.target);
 
   // ---------- Tropical trees: palms, bananas, mangoes, flamboyants ----------
   const trees = [];
