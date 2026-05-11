@@ -2003,17 +2003,54 @@ try {
   addPlayground(-12, 0);
 
   // ---------- Hydration stations ----------
+  // Each station is registered so it can spray a cooling mist when the player
+  // walks nearby (proximity-triggered effect in walk mode).
+  const hydrationStations = [];
   function addHydration(x, z) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 1.1, 10), new THREE.MeshLambertMaterial({ color: 0x4aa3df }));
     post.position.set(x, 0.55, z); post.castShadow = true; scene.add(post);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8), new THREE.MeshLambertMaterial({ color: 0x85b7eb }));
     head.position.set(x, 1.2, z); head.castShadow = true;
-    tag(head, 'hydration', 'Hydration station', 'Free filtered drinking water with a low bowl for dogs. In São Tomé\'s 30°C humidity, dehydration sneaks up fast — public water keeps everyone safe.');
+    tag(head, 'hydration', 'Hydration station', 'Free filtered drinking water with a low bowl for dogs. In São Tomé\'s 30°C humidity, dehydration sneaks up fast — public water keeps everyone safe. Walk close and the station sprays a cooling mist.');
     scene.add(head);
     const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.25, 0.1, 12), new THREE.MeshLambertMaterial({ color: 0xb5d4f4 }));
     bowl.position.set(x + 0.5, 0.05, z);
     tag(bowl, 'hydration', 'Pet water bowl', 'A low water bowl for dogs and other animals.');
     scene.add(bowl);
+
+    // Proximity-triggered mist spray — 3 stacked cloud puffs that fade in
+    // when the player approaches in walk mode.
+    const mistPuffs = [];
+    for (let i = 0; i < 3; i++) {
+      const puff = new THREE.Mesh(
+        new THREE.SphereGeometry(0.32 + i * 0.08, 12, 8),
+        new THREE.MeshLambertMaterial({
+          color: 0xd4ecf4,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false
+        })
+      );
+      puff.position.set(x, 1.5 + i * 0.35, z);
+      puff.scale.set(1.0, 0.7, 1.0);
+      scene.add(puff);
+      mistPuffs.push(puff);
+    }
+    // A narrow upward spray cone right at the spout
+    const spray = new THREE.Mesh(
+      new THREE.ConeGeometry(0.18, 0.7, 14, 1, true),
+      new THREE.MeshLambertMaterial({
+        color: 0xc0e0ec,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    spray.position.set(x, 1.65, z);
+    scene.add(spray);
+
+    hydrationStations.push({ x, z, puffs: mistPuffs, spray });
   }
   // Original 8 (around the park and at the inner-block corners)
   addHydration(-3, -3); addHydration(3, 3); addHydration(-3, 3); addHydration(3, -3);
@@ -2649,6 +2686,36 @@ try {
       m.material.opacity = 0.22 + 0.22 * (0.5 + 0.5 * Math.sin(phase));
       const s = 1 + Math.sin(phase * 1.4) * 0.07;
       m.scale.set(s, 1, s);
+    });
+    // Hydration station mist — fades in when the player walks within ~5m
+    const TRIGGER_DIST = 5.0;
+    const FALLOFF_DIST = 8.0;
+    hydrationStations.forEach((h, i) => {
+      let intensity = 0;
+      if (walkMode) {
+        const dx = walkPos.x - h.x;
+        const dz = walkPos.z - h.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < FALLOFF_DIST) {
+          intensity = Math.max(0, Math.min(1, (FALLOFF_DIST - dist) / (FALLOFF_DIST - TRIGGER_DIST + 0.1)));
+        }
+      }
+      // Smoothly ease opacity toward target intensity
+      const phase = t * 3.2 + i * 1.1;
+      const pulse = 0.5 + 0.5 * Math.sin(phase);
+      // Three puffs at staggered phases
+      h.puffs.forEach((puff, j) => {
+        const targetOpacity = intensity * (0.55 - j * 0.08) * (0.65 + 0.35 * Math.sin(phase + j * 0.9));
+        puff.material.opacity += (targetOpacity - puff.material.opacity) * 0.18;
+        // Pulse the scale and drift puffs upward when active
+        const s = 1.0 + intensity * (0.25 + Math.sin(phase + j) * 0.12);
+        puff.scale.set(s, 0.7 * s, s);
+        puff.position.y = 1.5 + j * 0.35 + intensity * (0.2 + Math.sin(phase + j) * 0.15);
+      });
+      // Narrow upward spray cone
+      h.spray.material.opacity += (intensity * 0.55 - h.spray.material.opacity) * 0.18;
+      const ss = 1.0 + intensity * (0.2 + Math.sin(phase * 1.6) * 0.1);
+      h.spray.scale.set(ss, 1.0 + intensity * 0.4, ss);
     });
     // Foam pulsing on the shoreline
     foamStrips.forEach((f, i) => {
