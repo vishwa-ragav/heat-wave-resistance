@@ -67,6 +67,7 @@
       <button id="btn-heat">Heat overlay</button>
       <button id="btn-rotate">Auto-spin</button>
       <button id="btn-reset">Reset view</button>
+      <button id="btn-perf" style="grid-column: span 2;">Performance mode (Chromebook)</button>
     </div>
     <p style="font-size:12px;color:#888;margin:6px 0 0;">Walk: <strong>W A S D</strong> or arrow keys &middot; <strong>Shift</strong> to run &middot; <strong>Mouse</strong> to look &middot; <strong>Esc</strong> to exit</p>
 
@@ -144,7 +145,9 @@ try {
 
   const camera = new THREE.PerspectiveCamera(45, stage.clientWidth / stage.clientHeight, 0.1, 1000);
   const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Pixel ratio capped to 1.5 for Chromebook / low-power friendliness
+  // (visually nearly identical to 2 on most displays, much less GPU work)
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(stage.clientWidth, stage.clientHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -168,8 +171,8 @@ try {
   const sun = new THREE.DirectionalLight(0xfff1cc, 1.05);
   sun.position.set(55, 85, -45);
   sun.castShadow = true;
-  sun.shadow.mapSize.width = 2048;
-  sun.shadow.mapSize.height = 2048;
+  sun.shadow.mapSize.width = 1024;
+  sun.shadow.mapSize.height = 1024;
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.04;
   Object.assign(sun.shadow.camera, { left: -65, right: 65, top: 65, bottom: -65, near: 0.1, far: 250 });
@@ -2656,6 +2659,51 @@ try {
   });
   btnWalk.addEventListener('click', () => { setWalkMode(!walkMode); });
 
+  // ---------- Performance Mode (for low-power devices like Chromebooks) ----------
+  // Aggressively cuts rendering cost: lower pixel ratio, no shadows, hide birds & clouds,
+  // and stops the heavy proximity-mist updates when no longer needed.
+  let perfMode = false;
+  const btnPerf = document.getElementById('btn-perf');
+  function setPerfMode(on) {
+    perfMode = on;
+    btnPerf.classList.toggle('active', on);
+    btnPerf.textContent = on ? 'Performance mode: ON' : 'Performance mode (Chromebook)';
+    if (on) {
+      renderer.setPixelRatio(1);
+      renderer.shadowMap.enabled = false;
+      sun.castShadow = false;
+      // Hide birds, clouds, and the building-mist clouds (the big transparent meshes)
+      birds.forEach(b => b.visible = false);
+      clouds.forEach(c => c.visible = false);
+      exteriorMists.forEach(m => m.visible = false);
+      // Hide hydration-station mist puffs too (still visible briefly when walking near, just skip in perf mode)
+      hydrationStations.forEach(h => {
+        h.puffs.forEach(p => p.visible = false);
+        h.spray.visible = false;
+      });
+    } else {
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.shadowMap.enabled = true;
+      sun.castShadow = true;
+      birds.forEach(b => b.visible = true);
+      clouds.forEach(c => c.visible = true);
+      exteriorMists.forEach(m => m.visible = true);
+      hydrationStations.forEach(h => {
+        h.puffs.forEach(p => p.visible = true);
+        h.spray.visible = true;
+      });
+    }
+    // Force a re-render so the change is visible immediately
+    renderer.shadowMap.needsUpdate = true;
+  }
+  btnPerf.addEventListener('click', () => setPerfMode(!perfMode));
+
+  // Freeze the shadow map after the first frame — the sun is stationary,
+  // so shadows don't need to re-render every frame. Huge performance win.
+  // Render once first, then disable autoUpdate.
+  renderer.render(scene, camera);
+  renderer.shadowMap.autoUpdate = false;
+
   window.addEventListener('resize', () => {
     camera.aspect = stage.clientWidth / stage.clientHeight;
     camera.updateProjectionMatrix();
@@ -2747,7 +2795,7 @@ try {
       else p.group.position.z = p.baseZ + off;
       p.group.position.y = Math.abs(Math.sin(t * 4 + p.phase)) * 0.05;
     });
-    if (autoRotate && !walkMode) { camState.angleH += 0.003; applyCamera(); }
+    if (autoRotate && !walkMode) { camState.angleH += dt * 0.18; applyCamera(); }
 
     // First-person walk movement
     if (walkMode) {
